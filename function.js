@@ -1,4 +1,4 @@
-let gApi_key;
+let gApi_key = 'd4a05bcb15d24e529878d61117e4a187';
 let gUrl;
 function CreateContentsTag(
   No,
@@ -58,10 +58,17 @@ function closeOverlay() {
 }
 // 배열에 추가된 마커들을 지도에 표시하거나 삭제하는 함수입니다
 function setMarkers(map) {
-  console.log("markers.length:",markers.length, "map : ", map);
-  for (var i = 0; i < markers.length; i++) {
+  console.log("SET MARKER");
+  if (map === null)
+  {
+    //console.log("markers.length:",markers.length, "map : ", map);
+  }
+  else 
+  {
+    for (var i = 0; i < markers.length; i++) {
       markers[i].setMap(map);
-  }            
+    }            
+  }
 }
 
 function fetchSchool(schooltype)
@@ -79,7 +86,7 @@ function fetchSchool(schooltype)
   //================================================================================================
   // 마커 동적 제거
   //================================================================================================
-  setMarkers(null);
+  //setMarkers(null);
   //------------------------------------------------------------------------------------------------
 
 
@@ -91,19 +98,69 @@ function fetchSchool(schooltype)
   queryParams += '&' + encodeURIComponent('pIndex') + '=' + encodeURIComponent(1); /**/
   queryParams += '&' + encodeURIComponent('pSize') + '=' + encodeURIComponent(1000); /**/   
   
-  fetch(gUrl + queryParams)
+  var uri = gUrl + queryParams;
+
+  fetch(uri)
     .then(response => response.json())
     .then(data => {
-      if (schooltype === "Middle")
-      {
-        arrAllSchoolData = data.MskulM[1].row;
+      console.log('fetchSchool - API 응답:', data);
+      
+      // API 응답이 배열 형식 처리 - MskulM이나 HgschlM이 [head, row] 배열
+      let schoolData = null;
+      
+      // 중학교 데이터 처리
+      if (schooltype === "Middle" && Array.isArray(data.MskulM) && data.MskulM.length >= 2) {
+        const head = data.MskulM[0].head;
+        const resultItem = head.find(h => h.RESULT);
+        
+        if (resultItem && resultItem.RESULT && resultItem.RESULT.CODE && resultItem.RESULT.CODE.includes('ERROR')) {
+          console.warn('⚠️ API 에러:', resultItem.RESULT.CODE);
+        } else {
+          schoolData = data.MskulM[1].row;
+          if (Array.isArray(schoolData)) {
+            console.log('✓ 중학교 데이터 로드:', schoolData.length, '개');
+          }
+        }
       }
-      else
-      {
-        arrAllSchoolData = data.HgschlM[1].row;
+      // 고등학교 데이터 처리
+      else if (schooltype === "High" && Array.isArray(data.HgschlM) && data.HgschlM.length >= 2) {
+        const head = data.HgschlM[0].head;
+        const resultItem = head.find(h => h.RESULT);
+        
+        if (resultItem && resultItem.RESULT && resultItem.RESULT.CODE && resultItem.RESULT.CODE.includes('ERROR')) {
+          console.warn('⚠️ API 에러:', resultItem.RESULT.CODE);
+        } else {
+          schoolData = data.HgschlM[1].row;
+          if (Array.isArray(schoolData)) {
+            console.log('✓ 고등학교 데이터 로드:', schoolData.length, '개');
+          }
+        }
       }
-      processData();
+      // 다른 형식 - 배열 구조로 row 찾기
+      else {
+        const keys = Object.keys(data);
+        for (let key of keys) {
+          if (Array.isArray(data[key]) && data[key].length >= 2 && data[key][1].row) {
+            schoolData = data[key][1].row;
+            console.log('✓ 학교 데이터 로드 (' + key + '):', schoolData.length, '개');
+            break;
+          }
+        }
+      }
+      
+      if (schoolData && Array.isArray(schoolData)) {
+        arrAllSchoolData = schoolData;
+        console.log('✓ 최종 학교 데이터 설정:', arrAllSchoolData.length, '개');
+      } else {
+        console.warn('⚠️ 학교 데이터를 찾을 수 없음');
+      }
+      
+      window.processData();
     })
+    .catch(err => {
+      console.error('❌ 학교 API 요청 실패:', err);
+      window.processData();
+    });
   // fetch('./addr.json')
   //   .then(response => response.json())
   //   .then(data => {
@@ -138,7 +195,7 @@ function setSchoolInfo(schooltype) {
     highSchoolControl.className = "btn";
 
     // 중학교 정보를 입력하면 됨 
-    gApi_key = "3c3198ef4877402c9361a69a6c47398b";
+    gApi_key = "d4a05bcb15d24e529878d61117e4a187";
     gUrl = 'https://openapi.gg.go.kr/MskulM'; /*URL*/
   } else {
     //map.setMapTypeId(kakao.maps.MapTypeId.HYBRID);
@@ -146,7 +203,7 @@ function setSchoolInfo(schooltype) {
     middleSchoolControl.className = "btn";
 
     // 고등학교 정보를 입력하면 됨 
-    gApi_key = "700da445e66f4c24b6e89057d2df33dd";
+    gApi_key = "d530146e5c34496d8c341bc47fade026";
     gUrl = 'https://openapi.gg.go.kr/HgschlM'; /*URL*/
   }
 
