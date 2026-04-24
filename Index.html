@@ -436,26 +436,31 @@
         // XMLHttpRequest로 addr.json 파일 읽기
         var xhr = new XMLHttpRequest();
         xhr.open('GET', './addr.json', true);
-        xhr.responseType = 'json';
         
         xhr.onload = function() {
-          if (xhr.status === 200) {
-            arrANC_Data = xhr.response;
-            console.log('✓ 주소 데이터 로드 성공:', arrANC_Data.length, '개');
-            processData();
+          // file:// 프로토콜에서는 상태가 0으로 올 수 있음
+          if (xhr.status === 200 || xhr.status === 0) {
+            try {
+              console.log('📝 addr.json 텍스트 받음, 길이:', xhr.responseText.length);
+              const data = JSON.parse(xhr.responseText);
+              arrANC_Data = data;
+              console.log('✓ 주소 데이터 로드 성공 (파일):', arrANC_Data.length, '개');
+              processData();
+            } catch (parseErr) {
+              console.warn('⚠️ JSON 파싱 오류:', parseErr.message);
+              console.log('파일 내용 처음 200자:', xhr.responseText.substring(0, 200));
+              loadAddrDataDirectly();
+            }
           } else {
-            console.warn('⚠️ addr.json 파일을 찾을 수 없습니다 (상태:', xhr.status + '). 직접 데이터 사용');
+            console.warn('⚠️ 파일 로드 실패 (상태:', xhr.status + ')');
             loadAddrDataDirectly();
           }
         };
         
         xhr.onerror = function() {
-          console.warn('⚠️ 주소 데이터 로드 실패 (네트워크 에러). 직접 데이터 사용');
+          console.warn('⚠️ 주소 데이터 로드 실패 (네트워크 에러)');
+          console.log('직접 데이터로 대체합니다.');
           loadAddrDataDirectly();
-        };
-        
-        xhr.onprogress = function() {
-          // 진행상황 처리 (필요시)
         };
         
         xhr.send();

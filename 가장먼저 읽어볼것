@@ -9,16 +9,16 @@
 git init
 git add .
 git commit -m "first commit"
-git branch -M master
+git branch -M main
 git remote remove origin
 git remote add origin https://github.com/yeorijby/MapTest.git
-git push -u origin master
+git push -u origin main
 
 ////// 무조건 pull
 //local의 파일들은 모두 날라가도 문제 없는 상황에서 "나는 그저 원격 git 저장소의 main를 내 local로 덮어 씌우고 싶다." 하는 상황에서 사용
 git fetch --all
-git reset --hard origin/master
-git pull origin master
+git reset --hard origin/main
+git pull origin main
 
 
 
