@@ -18,12 +18,9 @@
       ></div>
       <!-- 지도타입 컨트롤 div 입니다 -->
       <div class="custom_selector_school_grade radius_border">
-        <span id="btnMiddleSchool" class="selected_btn" onclick="setSchoolInfo('Middle')"
-          >중학교</span
-        >
-        <span id="btnHighSchool" class="btn" onclick="setSchoolInfo('High')"
-          >고등학교</span
-        >
+        <span id="btnElemtarySchool" class="btn" onclick="setSchoolInfo('Elementary')">초등학교</span>
+        <span id="btnMiddleSchool" class="btn" onclick="setSchoolInfo('Middle')">중학교</span>
+        <span id="btnHighSchool" class="selected_btn" onclick="setSchoolInfo('High')">고등학교</span>
       </div>
       <!-- 지도타입 컨트롤 div 입니다 -->
       <div class="custom_typecontrol radius_border">
@@ -256,8 +253,8 @@
           arrFetch.length = 0;
 
           arrAllSchoolData.forEach(schoolData => {
-            //const matchedSchoolData = arrANC_Data.find(ancData => ancData.School === schoolData.FACLT_NM);          // find로 했을 때 - 단수일경우      
-            const matchedSchoolData = arrANC_Data.filter(ancData => ancData.School === schoolData.FACLT_NM);          // filter 로 했을 때 - 복수일 경우       
+            //const matchedSchoolData = arrANC_Data.find(ancData => ancData.School === schoolData.SCHUL_NM);          // find로 했을 때 - 단수일경우      
+            const matchedSchoolData = arrANC_Data.filter(ancData => ancData.School === schoolData.SCHUL_NM);          // filter 로 했을 때 - 복수일 경우       
 
             // find로 했을 때 - 단수일경우
             // if (matchedSchoolData) {
@@ -290,16 +287,16 @@
 
           //.log(arrFetch);
           arrFetch.forEach(element => {
-          var latitude = element.REFINE_WGS84_LAT;
-          var longitude = element.REFINE_WGS84_LOGT;
+          var latitude = element.LTTUD;
+          var longitude = element.LGTUD;
 
 
           contents = CreateContentsTag(
             i,
-            element.FACLT_NM,   // "카카오 스페이스닷원",
+            element.SCHUL_NM,   // "카카오 스페이스닷원",
             "",//element.image,    // "https://t1.kakaocdn.net/kakaocorp/kakaocorp/admin/community/83cd8a98017a00001.png", //"https://cfile181.uf.daum.net/image/250649365602043421936D",
-            element.REFINE_ROADNM_ADDR,     // "제주특별자치도 제주시 첨단로 242",
-            element.REFINE_LOTNO_ADDR,    // "(우) 63309 (지번) 영평동 2181",
+            element.SCHUL_RDNMA,     // "제주특별자치도 제주시 첨단로 242",
+            element.DTLAD_BRKDN,    // "(우) 63309 (지번) 영평동 2181",
             "",//element.home,     // "https://www.kakaocorp.com/main",
             element.Name
           );
@@ -340,12 +337,12 @@
         //-------------------------------------------------------------------------------------------------------------------------------------------------------
 
         // 위에서 작성한 코드를 사용하여 데이터 처리
-        var api_key = "d4a05bcb15d24e529878d61117e4a187";
-        var url = 'https://openapi.gg.go.kr/MskulM'; /*URL*/
-        var queryParams = '?' + encodeURIComponent('Key') + '='+api_key; /*Service Key*/
-        queryParams += '&' + encodeURIComponent('type') + '=' + encodeURIComponent('json'); /**/
-        queryParams += '&' + encodeURIComponent('pIndex') + '=' + encodeURIComponent(1); /**/
-        queryParams += '&' + encodeURIComponent('pSize') + '=' + encodeURIComponent(1000); /**/   
+        var api_key = "78d56edb8f784428854ce15ce720fe86";
+        var url = 'https://api.allorigins.win/raw?url=https://www.schoolinfo.go.kr/openApi.do'; /*CORS 프록시*/
+        var queryParams = '?' + encodeURIComponent('apiKey') + '='+api_key; /*Service Key*/
+        queryParams += '&' + encodeURIComponent('apiType') + '=' + encodeURIComponent('0'); /**/
+        queryParams += '&' + encodeURIComponent('sidoCode') + '=' + encodeURIComponent('41'); /*경기도*/
+        queryParams += '&' + encodeURIComponent('sggCode') + '=' + encodeURIComponent('41370'); /*오산시*/
         
         var uri = url + queryParams;
         // 비동기 방식이라 시점이 중요하다.
@@ -353,84 +350,38 @@
         fetch(uri)
           .then(response => response.json())
           .then(data => {
-            console.log('📡 API 응답 전체:', data);
+            console.log('📡 초기 로드 API 응답:', data);
             console.log('📊 응답 구조:');
-            console.log('  - data 타입:', typeof data);
-            console.log('  - data의 keys:', Object.keys(data));
-            if (data.MskulM) {
-              console.log('  - data.MskulM.head:', data.MskulM.head);
-              console.log('  - data.MskulM.row 타입:', Array.isArray(data.MskulM.row) ? '배열' : typeof data.MskulM.row);
-              if (Array.isArray(data.MskulM.row)) {
-                console.log('  - data.MskulM.row 길이:', data.MskulM.row.length);
-              }
-              console.log('  - data.MskulM의 모든 keys:', Object.keys(data.MskulM));
-              console.log('  - data.MskulM 전체:', JSON.stringify(data.MskulM).substring(0, 500));
+            console.log('  - resultCode:', data.resultCode);
+            console.log('  - resultMsg:', data.resultMsg);
+            console.log('  - list 길이:', Array.isArray(data.list) ? data.list.length : 'N/A');
+            
+            // 새로운 API 응답 구조: { resultCode, resultMsg, list: [...] }
+            let schoolData = null;
+            
+            // resultCode 체크
+            if (data.resultCode === 'success' && Array.isArray(data.list) && data.list.length > 0) {
+              schoolData = data.list;
+              console.log('✓ 학교 데이터 로드 성공:', schoolData.length, '개');
+            } else if (data.resultCode !== 'success') {
+              console.warn('⚠️ API 에러:', data.resultMsg);
+            } else {
+              console.warn('⚠️ 학교 데이터를 찾을 수 없음');
             }
             
-            // API 에러 체크 - MskulM이 배열 형식
-            if (Array.isArray(data.MskulM) && data.MskulM.length >= 2) {
-              const head = data.MskulM[0].head;  // head 배열
-              const resultItem = head.find(h => h.RESULT);  // RESULT가 있는 항목 찾기
-              if (resultItem && resultItem.RESULT && resultItem.RESULT.CODE && resultItem.RESULT.CODE.includes('ERROR')) {
-                console.warn('⚠️ API 에러:', resultItem.RESULT.CODE, resultItem.RESULT.MESSAGE);
-                console.log('학생 데이터를 사용합니다.');
-                arrANC_Data = studient;
-                processData();
-                return;
-              }
-              
-              // row 데이터 추출
-              const rowData = data.MskulM[1].row;
-              if (Array.isArray(rowData)) {
-                arrAllSchoolData = rowData;
-                console.log('✓ 중학교 데이터 로드 성공:', arrAllSchoolData.length, '개');
-                processData();
-                return;
-              }
-            }
-            
-            // HgschlM (고등학교) 처리 - 동일한 배열 구조
-            if (Array.isArray(data.HgschlM) && data.HgschlM.length >= 2) {
-              const head = data.HgschlM[0].head;
-              const resultItem = head.find(h => h.RESULT);
-              if (resultItem && resultItem.RESULT && resultItem.RESULT.CODE && resultItem.RESULT.CODE.includes('ERROR')) {
-                console.warn('⚠️ API 에러:', resultItem.RESULT.CODE, resultItem.RESULT.MESSAGE);
-              } else {
-                const rowData = data.HgschlM[1].row;
-                if (Array.isArray(rowData)) {
-                  arrAllSchoolData = rowData;
-                  console.log('✓ 고등학교 데이터 로드 성공:', arrAllSchoolData.length, '개');
-                  processData();
-                  return;
-                }
-              }
-            }
-            
-            // 다른 형식 시도
-            const keys = Object.keys(data);
-            let found = false;
-            for (let key of keys) {
-              if (Array.isArray(data[key]) && data[key].length >= 2 && data[key][1].row) {
-                arrAllSchoolData = data[key][1].row;
-                console.log('✓ 학교 데이터 로드 성공:', arrAllSchoolData.length, '개');
-                processData();
-                found = true;
-                break;
-              }
-            }
-            
-            if (!found) {
-              console.log('>>> 224번 줄 실행: row 데이터를 찾을 수 없음. 학생 데이터 사용');
-              console.warn('⚠️ row 데이터를 찾을 수 없음. 학생 데이터 사용');
-              arrANC_Data = studient;
+            if (schoolData && Array.isArray(schoolData)) {
+              arrAllSchoolData = schoolData;
+              console.log('✓ 최종 학교 데이터 설정:', arrAllSchoolData.length, '개');
               processData();
+            } else {
+              console.warn('⚠️ 학교 데이터를 찾을 수 없음. 학생 데이터 사용');
+              loadAddrDataDirectly();
             }
           })
           .catch(err => {
-            console.error('❌ 학교 API 요청 실패:', err);
+            console.error('❌ 초기 로드 API 요청 실패:', err);
             console.log('학생 데이터를 사용합니다.');
-            arrANC_Data = studient;
-            processData();
+            loadAddrDataDirectly();
           });
 
         // XMLHttpRequest로 addr.json 파일 읽기

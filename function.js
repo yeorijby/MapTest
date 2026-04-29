@@ -1,5 +1,11 @@
-let gApi_key = 'd4a05bcb15d24e529878d61117e4a187';
-let gUrl;
+// let gApi_key = 'd4a05bcb15d24e529878d61117e4a187'; // 중고만 있을때  // 쓰던거
+let gApi_key = '78d56edb8f784428854ce15ce720fe86';
+// let gUrl = 'https://www.schoolinfo.go.kr/openApi.do';
+// var url = 'https://api.allorigins.win/raw?url=https://www.schoolinfo.go.kr/openApi.do'; /*CORS 프록시*/
+let gUrl = 'https://api.allorigins.win/raw?url=https://www.schoolinfo.go.kr/openApi.do';
+let gParams;
+
+
 function CreateContentsTag(
   No,
   PosName,
@@ -93,10 +99,15 @@ function fetchSchool(schooltype)
   // // 위에서 작성한 코드를 사용하여 데이터 처리
   // var api_key = "3c3198ef4877402c9361a69a6c47398b";
   // var url = 'https://openapi.gg.go.kr/MskulM'; /*URL*/
-  var queryParams = '?' + encodeURIComponent('Key') + '='+gApi_key; /*Service Key*/
-  queryParams += '&' + encodeURIComponent('type') + '=' + encodeURIComponent('json'); /**/
-  queryParams += '&' + encodeURIComponent('pIndex') + '=' + encodeURIComponent(1); /**/
-  queryParams += '&' + encodeURIComponent('pSize') + '=' + encodeURIComponent(1000); /**/   
+  // var queryParams = '?' + encodeURIComponent('Key') + '='+gApi_key; /*Service Key*/
+  // queryParams += '&' + encodeURIComponent('type') + '=' + encodeURIComponent('json'); /**/
+  // queryParams += '&' + encodeURIComponent('pIndex') + '=' + encodeURIComponent(1); /**/
+  // queryParams += '&' + encodeURIComponent('pSize') + '=' + encodeURIComponent(1000); /**/   
+
+  var queryParams = '?' + encodeURIComponent('apiKey') + '='+gApi_key + gParams;  
+  queryParams += '&' + encodeURIComponent('apiType') + '=' + encodeURIComponent('0'); /**/
+  queryParams += '&' + encodeURIComponent('sidoCode') + '=' + encodeURIComponent('41'); /*경기도*/
+  queryParams += '&' + encodeURIComponent('sggCode') + '=' + encodeURIComponent('41370'); /*오산시*/
   
   var uri = gUrl + queryParams;
 
@@ -105,54 +116,22 @@ function fetchSchool(schooltype)
     .then(data => {
       console.log('fetchSchool - API 응답:', data);
       
-      // API 응답이 배열 형식 처리 - MskulM이나 HgschlM이 [head, row] 배열
+      // 새로운 API 응답 구조: { resultCode, resultMsg, list: [...] }
       let schoolData = null;
       
-      // 중학교 데이터 처리
-      if (schooltype === "Middle" && Array.isArray(data.MskulM) && data.MskulM.length >= 2) {
-        const head = data.MskulM[0].head;
-        const resultItem = head.find(h => h.RESULT);
-        
-        if (resultItem && resultItem.RESULT && resultItem.RESULT.CODE && resultItem.RESULT.CODE.includes('ERROR')) {
-          console.warn('⚠️ API 에러:', resultItem.RESULT.CODE);
-        } else {
-          schoolData = data.MskulM[1].row;
-          if (Array.isArray(schoolData)) {
-            console.log('✓ 중학교 데이터 로드:', schoolData.length, '개');
-          }
-        }
-      }
-      // 고등학교 데이터 처리
-      else if (schooltype === "High" && Array.isArray(data.HgschlM) && data.HgschlM.length >= 2) {
-        const head = data.HgschlM[0].head;
-        const resultItem = head.find(h => h.RESULT);
-        
-        if (resultItem && resultItem.RESULT && resultItem.RESULT.CODE && resultItem.RESULT.CODE.includes('ERROR')) {
-          console.warn('⚠️ API 에러:', resultItem.RESULT.CODE);
-        } else {
-          schoolData = data.HgschlM[1].row;
-          if (Array.isArray(schoolData)) {
-            console.log('✓ 고등학교 데이터 로드:', schoolData.length, '개');
-          }
-        }
-      }
-      // 다른 형식 - 배열 구조로 row 찾기
-      else {
-        const keys = Object.keys(data);
-        for (let key of keys) {
-          if (Array.isArray(data[key]) && data[key].length >= 2 && data[key][1].row) {
-            schoolData = data[key][1].row;
-            console.log('✓ 학교 데이터 로드 (' + key + '):', schoolData.length, '개');
-            break;
-          }
-        }
+      // resultCode 체크
+      if (data.resultCode === 'success' && Array.isArray(data.list) && data.list.length > 0) {
+        schoolData = data.list;
+        console.log('✓ 학교 데이터 로드 성공:', schoolData.length, '개');
+      } else if (data.resultCode !== 'success') {
+        console.warn('⚠️ API 에러:', data.resultMsg);
+      } else {
+        console.warn('⚠️ 학교 데이터를 찾을 수 없음');
       }
       
       if (schoolData && Array.isArray(schoolData)) {
         arrAllSchoolData = schoolData;
         console.log('✓ 최종 학교 데이터 설정:', arrAllSchoolData.length, '개');
-      } else {
-        console.warn('⚠️ 학교 데이터를 찾을 수 없음');
       }
       
       window.processData();
@@ -187,24 +166,40 @@ function setMapType(maptype) {
 }
 
 function setSchoolInfo(schooltype) {
+  var elementarySchoolControl = document.getElementById("btnElemtarySchool");
   var middleSchoolControl = document.getElementById("btnMiddleSchool");
   var highSchoolControl = document.getElementById("btnHighSchool");
-  if (schooltype === "Middle") {
+  gParams = '&' + encodeURIComponent('schulKndCode')
+  if (schooltype === "Elementary") {
     //map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);
+    elementarySchoolControl.className = "selected_btn";
+    middleSchoolControl.className = "btn";
+    highSchoolControl.className = "btn";
+
+    gParams += '=' + encodeURIComponent('02');  
+    // // 중학교 정보를 입력하면 됨 
+    // gApi_key = "d4a05bcb15d24e529878d61117e4a187";
+    // gUrl = 'https://openapi.gg.go.kr/MskulM'; /*URL*/
+  } else if (schooltype === "Middle") {
+    //map.setMapTypeId(kakao.maps.MapTypeId.ROADMAP);
+    elementarySchoolControl.className = "btn";
     middleSchoolControl.className = "selected_btn";
     highSchoolControl.className = "btn";
 
-    // 중학교 정보를 입력하면 됨 
-    gApi_key = "d4a05bcb15d24e529878d61117e4a187";
-    gUrl = 'https://openapi.gg.go.kr/MskulM'; /*URL*/
+    gParams += '=' + encodeURIComponent('03');  
+    // // 중학교 정보를 입력하면 됨 
+    // gApi_key = "d4a05bcb15d24e529878d61117e4a187";
+    // gUrl = 'https://openapi.gg.go.kr/MskulM'; /*URL*/
   } else {
     //map.setMapTypeId(kakao.maps.MapTypeId.HYBRID);
+    elementarySchoolControl.className = "btn";
     highSchoolControl.className = "selected_btn";
     middleSchoolControl.className = "btn";
 
-    // 고등학교 정보를 입력하면 됨 
-    gApi_key = "d530146e5c34496d8c341bc47fade026";
-    gUrl = 'https://openapi.gg.go.kr/HgschlM'; /*URL*/
+    gParams += '=' + encodeURIComponent('04');  
+    // // 고등학교 정보를 입력하면 됨 
+    // gApi_key = "d530146e5c34496d8c341bc47fade026";
+    // gUrl = 'https://openapi.gg.go.kr/HgschlM'; /*URL*/
   }
 
   fetchSchool(schooltype);
