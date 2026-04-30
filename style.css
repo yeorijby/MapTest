@@ -162,7 +162,7 @@ body {
   left: 0;
   bottom: 40px;
   width: 380px;
-  height: 140px;
+  height: 240px;
   margin-left: -144px;
   text-align: left;
   overflow: hidden;
@@ -176,7 +176,7 @@ body {
 }
 .wrap .info {
   width: 380px;/*286px;*/
-  height: 140px;/* 120px; */
+  height: 220px;/* 120px; */
   border-radius: 5px;
   font-size: 10px;
   border-bottom: 2px solid #ccc;
@@ -215,8 +215,19 @@ body {
 .info .desc {
   position: relative;
   margin: 13px 0 0 90px;
-  height: 75px;
+  height: 160px;
 }
+
+.stats {
+  margin-top:6px;
+  color:#333;
+  font-size:12px;
+  max-height: 110px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.stat-row { margin-bottom:2px; }
 .desc .ellipsis {
   overflow: hidden;
   text-overflow: ellipsis;
