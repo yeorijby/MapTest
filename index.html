@@ -279,13 +279,15 @@
             let strName = "";
             if (matchedSchoolData.length > 0) {
               matchedSchoolData.forEach(metchedData => {
-
+                // 이름 뒤에 학년을 괄호로 붙여 표시 (Year가 있으면)
+                var displayName = metchedData.Name;
+                if (metchedData.Year !== undefined && metchedData.Year !== null) displayName += '(' + metchedData.Year + ')';
                 if (bFirst === true) {
-                  strName = metchedData.Name;
+                  strName = displayName;
                   bFirst = false;
                 }
                 else {
-                  strName += ", " + metchedData.Name;
+                  strName += ", " + displayName;
                 }
               })
               //console.log(strName);
@@ -311,6 +313,9 @@
             element.DTLAD_BRKDN,
             element.HMPG_ADRES || "",
             element.Name,
+            element.FOND_SC_CODE || '',
+            element.USER_TELNO || element.TELNO || '',
+            element.PERC_FAXNO || element.FAXNO || '',
             element.COEDU_SC_CODE || '',
             element._stats || null
           );

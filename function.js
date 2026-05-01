@@ -3,7 +3,7 @@ let gApi_key = '78d56edb8f784428854ce15ce720fe86';
 let gUrl = 'https://www.schoolinfo.go.kr/openApi.do';
 let gParams;
 
-function CreateContentsTag(No, PosName, img, DoRoMyung, JiBun, HomePage, members, coedCode, stats) {
+function CreateContentsTag(No, PosName, img, DoRoMyung, JiBun, HomePage, members, fond, tel, fax, coedCode, stats) {
   // 공학 구분 처리
   var coedText = '정보없음';
   if (coedCode) {
@@ -72,11 +72,53 @@ function CreateContentsTag(No, PosName, img, DoRoMyung, JiBun, HomePage, members
 
   // 값 존재 여부를 정확히 판별(0도 유효값으로 취급)
   function hasValue(v) { return v !== null && v !== undefined && String(v).trim() !== ''; }
-  var c_sum_c4_val = (c_sum_c4 && hasValue(c_sum_c4.value)) ? c_sum_c4.value : null;
-  var c_sum_s4_val = (c_sum_s4 && hasValue(c_sum_s4.value)) ? c_sum_s4.value : null;
-  var c_sum_4_val = (c_sum_4 && hasValue(c_sum_4.value)) ? c_sum_4.value : null;
-  var teach_cnt_val = (teach_cnt && hasValue(teach_cnt.value)) ? teach_cnt.value : null;
-  var teach_cal_val = (teach_cal && hasValue(teach_cal.value)) ? teach_cal.value : null;
+  // 우선적으로 응답의 표준 키를 직접 사용하고, 없으면 자동 탐지값 사용
+  var c_sum_c4_val = null;
+  var c_sum_s4_val = null;
+  var c_sum_4_val = null;
+  var teach_cnt_val = null;
+  var teach_cal_val = null;
+
+  try {
+    if (stats) {
+      if (stats.COL_C_SUM !== undefined && stats.COL_C_SUM !== null) c_sum_c4_val = stats.COL_C_SUM;
+      if (stats.COL_S_SUM !== undefined && stats.COL_S_SUM !== null) c_sum_s4_val = stats.COL_S_SUM;
+      if (stats.COL_SUM !== undefined && stats.COL_SUM !== null) c_sum_4_val = stats.COL_SUM;
+      if (stats.TEACH_CNT !== undefined && stats.TEACH_CNT !== null) teach_cnt_val = stats.TEACH_CNT;
+        // teach_cal_val is computed if missing
+        if (stats.TEACH_CAL !== undefined && stats.TEACH_CAL !== null) {
+          teach_cal_val = stats.TEACH_CAL;
+        }
+      
+        // 보조 계산: TEACH_CAL이 없고 총학생수, 총교사수가 있으면 계산
+        try {
+          if ((teach_cal_val === null || teach_cal_val === '') && c_sum_s4_val != null && teach_cnt_val != null && Number(teach_cnt_val) !== 0) {
+            var computed = Number(String(c_sum_s4_val).replace(/,/g,'')) / Number(String(teach_cnt_val).replace(/,/g,''));
+            if (!isNaN(computed)) teach_cal_val = Math.round(computed * 10) / 10;
+          }
+        } catch(e) { console.warn('teach_cal compute failed', e); }
+    }
+  } catch(e) { console.warn('stats direct key read failed', e); }
+
+  // 자동탐지 결과 보조 대입
+  if (c_sum_c4_val === null && c_sum_c4 && hasValue(c_sum_c4.value)) c_sum_c4_val = c_sum_c4.value;
+  if (c_sum_s4_val === null && c_sum_s4 && hasValue(c_sum_s4.value)) c_sum_s4_val = c_sum_s4.value;
+  if (c_sum_4_val === null && c_sum_4 && hasValue(c_sum_4.value)) c_sum_4_val = c_sum_4.value;
+  if (teach_cnt_val === null && teach_cnt && hasValue(teach_cnt.value)) teach_cnt_val = teach_cnt.value;
+  if (teach_cal_val === null && teach_cal && hasValue(teach_cal.value)) teach_cal_val = teach_cal.value;
+
+  // 숫자일 경우 포맷(소수 1자리)
+  function fmtNumber(v) {
+    if (v === null || v === undefined || String(v).trim() === '') return v;
+    var n = Number(String(v).replace(/,/g, ''));
+    if (!isNaN(n) && Math.abs(n - Math.round(n)) > 0) return Math.round(n * 10) / 10; // 1 decimal
+    return v;
+  }
+  c_sum_c4_val = c_sum_c4_val !== null ? fmtNumber(c_sum_c4_val) : null;
+  c_sum_s4_val = c_sum_s4_val !== null ? fmtNumber(c_sum_s4_val) : null;
+  c_sum_4_val = c_sum_4_val !== null ? fmtNumber(c_sum_4_val) : null;
+  teach_cnt_val = teach_cnt_val !== null ? fmtNumber(teach_cnt_val) : null;
+  teach_cal_val = teach_cal_val !== null ? fmtNumber(teach_cal_val) : null;
 
   if (c_sum_c4 && c_sum_c4.key) console.log('stat key for 총 학급수:', c_sum_c4.key);
   if (c_sum_s4 && c_sum_s4.key) console.log('stat key for 총 학생수:', c_sum_s4.key);
@@ -87,18 +129,18 @@ function CreateContentsTag(No, PosName, img, DoRoMyung, JiBun, HomePage, members
   var yearLabel = '';
   if (stats && stats._displayYear) yearLabel = `<div class="year-label">(작년: ${stats._displayYear}년 기준)</div>`;
 
-  function withKey(val, key) {
-    return `${val}` + (key ? ` <small style="color:#666">(key:${key})</small>` : '');
+  function withKey(val) {
+    return `${val}`;
   }
 
   // 고정 폼: 항상 모든 항목을 표시 (값이 없으면 '-' 표시)
   var statsHtml = `<div class="stats">
     ${yearLabel}
-    <div>총 학급수: ${c_sum_c4_val !== null ? withKey(c_sum_c4_val, c_sum_c4 && c_sum_c4.key) : '-'}</div>
-    <div>총 학생수: ${c_sum_s4_val !== null ? withKey(c_sum_s4_val, c_sum_s4 && c_sum_s4.key) : '-'}</div>
-    <div>학급당 학생수: ${c_sum_4_val !== null ? withKey(c_sum_4_val, c_sum_4 && c_sum_4.key) : '-'}</div>
-    <div>총 교사수: ${teach_cnt_val !== null ? withKey(teach_cnt_val, teach_cnt && teach_cnt.key) : '-'}</div>
-    <div>교원 1인당 학생수: ${teach_cal_val !== null ? withKey(teach_cal_val, teach_cal && teach_cal.key) : '-'}</div>
+    <div class="stat-row">총 학급수: ${c_sum_c4_val !== null ? withKey(c_sum_c4_val) : '-'}</div>
+    <div class="stat-row">총 학생수: ${c_sum_s4_val !== null ? withKey(c_sum_s4_val) : '-'}</div>
+    <div class="stat-row">학급당 학생수: ${c_sum_4_val !== null ? withKey(c_sum_4_val) : '-'}</div>
+    <div class="stat-row">총 교사수: ${teach_cnt_val !== null ? withKey(teach_cnt_val) : '-'}</div>
+    <div class="stat-row">교원 1인당 학생수: ${teach_cal_val !== null ? withKey(teach_cal_val) : '-'}</div>
   </div>`;
 
   var content = `<div class="wrap">
@@ -108,16 +150,25 @@ function CreateContentsTag(No, PosName, img, DoRoMyung, JiBun, HomePage, members
         <div class="close" id="info_close_${No}" title="닫기"></div>
       </div>
       <div class="body">
-        <div class="img">
-          <img src="${img}" width="75" height="70">
-        </div>
-        <div class="desc">
-          <div class="ellipsis">${DoRoMyung}</div>
-          <div class="jibun ellipsis">${JiBun}</div>
-          ${homepageHtml}
-          <div class="coed">공학구분: ${coedText}</div>
-          ${statsHtml}
-          <div class="mem">${members}</div>
+        <div class="popup-grid">
+          <div class="col-left">
+            <div class="img"><img src="${img}" alt="logo"/></div>
+          </div>
+          <div class="col-mid">
+            <div class="ellipsis">${DoRoMyung}</div>
+            <div class="jibun ellipsis">${JiBun}</div>
+            ${homepageHtml}
+            <div class="coed">공학구분: ${coedText}</div>
+            <div class="meta">
+              <div>설립구분: ${fond || '-'}</div>
+              <div>전화번호: ${tel || '-'}</div>
+              <div>팩스번호: ${fax || '-'}</div>
+            </div>
+          </div>
+          <div class="col-right">
+            ${statsHtml}
+          </div>
+          <div class="members-row">${members}</div>
         </div>
       </div>
     </div>
