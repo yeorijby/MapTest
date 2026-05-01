@@ -7,8 +7,8 @@
       받아 올수만 있으면 될듯!
     </title>
     <link rel="stylesheet" href="style.css" />
-    <script src="https://developers.kakao.com/sdk/js/kakao.js"></script>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=920f04a92b0d4bff8ceccf191eede4a3&libraries=services"></script>
+    <!-- Kakao SDK: 하나의 스크립트만 사용합니다 (defer로 로드) -->
+    <script type="text/javascript" defer src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=920f04a92b0d4bff8ceccf191eede4a3&libraries=services"></script>
   </head>
   <body>
     <div class="map_wrap">
@@ -359,6 +359,39 @@
         var api_key = "78d56edb8f784428854ce15ce720fe86";
         var apiBase = 'https://www.schoolinfo.go.kr/openApi.do';
 
+        // Proxy helper: 로컬 개발 환경에서는 로컬 프록시를 사용하고,
+        // 배포 환경에서는 공용 CORS 프록시를 사용합니다.
+        function getProxyUrl(target) {
+          try {
+            var host = window.location.hostname;
+            if (host === 'localhost' || host === '127.0.0.1') {
+              return 'http://localhost:3000/proxy?url=' + encodeURIComponent(target);
+            }
+          } catch (e) {
+            // 무시
+          }
+          // GitHub Pages 등 정적 호스팅에서는 public CORS 프록시 사용
+          return 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target);
+        }
+
+        // 안전한 프록시 fetch: 먼저 getProxyUrl로 시도하고, 로컬 프록시가 실패하면
+        // 공용 프록시(api.allorigins.win)로 재시도합니다. network error 발생 시 재시도.
+        function fetchViaProxy(target) {
+          var p = getProxyUrl(target);
+          return fetch(p).catch(err => {
+            console.warn('첫 시도 프록시 실패:', p, err);
+            // 로컬 프록시로 시도했는데 실패했다면 공용 프록시로 재시도
+            var fallback = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(target);
+            if (p.indexOf('localhost') !== -1) {
+              return fetch(fallback).catch(err2 => {
+                console.warn('대체 공용 프록시도 실패:', fallback, err2);
+                throw err2;
+              });
+            }
+            throw err;
+          });
+        }
+
         // sggCode 설정: 여러 시를 한 번에 가져오려면 쉼표로 구분하세요.
         // 예: '41370' 또는 '41370,41110'
         var sggParam = '41370,41110,41591,41593,41595,41597'; // 기본: 오산시
@@ -389,8 +422,7 @@
             var t = buildTargetUrl(code, '09');
             // pbanYr 필수 파라미터 추가
             t += '&' + encodeURIComponent('pbanYr') + '=' + encodeURIComponent(apiPbanYr);
-            var u = 'http://localhost:3000/proxy?url=' + encodeURIComponent(t);
-            return fetch(u).then(r => r.json()).catch(e => { console.warn('stats 요청 실패:', code, e); return null; });
+            return fetchViaProxy(t).then(r => r.json()).catch(e => { console.warn('stats 요청 실패:', code, e); return null; });
           });
 
           return Promise.all(statsFetches).then(results => {
@@ -417,8 +449,7 @@
 
         if (sggCodes.length === 1) {
           var targetUrl = buildTargetUrl(sggCodes[0]);
-          var uri = 'http://localhost:3000/proxy?url=' + encodeURIComponent(targetUrl);
-          fetch(uri)
+          fetchViaProxy(targetUrl)
             .then(response => response.json())
             .then(data => {
               console.log('📡 초기 로드 API 응답:', data);
@@ -449,8 +480,7 @@
           // 여러 sggCode 병렬 요청 후 결과 합치기
           var fetches = sggCodes.map(code => {
             var t = buildTargetUrl(code);
-            var u = 'http://localhost:3000/proxy?url=' + encodeURIComponent(t);
-            return fetch(u).then(r => r.json()).catch(e => { console.warn('요청 실패:', code, e); return null; });
+            return fetchViaProxy(t).then(r => r.json()).catch(e => { console.warn('요청 실패:', code, e); return null; });
           });
 
           Promise.all(fetches).then(results => {
@@ -511,8 +541,7 @@
           // 학교 목록 불러오기 (다중 sgg 지원)
           var fetches = sggCodes.map(code => {
             var t = buildTargetUrl(code, '0', currentSchulKnd);
-            var u = 'http://localhost:3000/proxy?url=' + encodeURIComponent(t);
-            return fetch(u).then(r => r.json()).catch(e => { console.warn('요청 실패:', code, e); return null; });
+            return fetchViaProxy(t).then(r => r.json()).catch(e => { console.warn('요청 실패:', code, e); return null; });
           });
 
           Promise.all(fetches).then(results => {
