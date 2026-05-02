@@ -2,24 +2,8 @@
 <html>
   <head>
     <meta charset="Utf-8" />
-    <title>
-      지도에 열고/닫기 가능한 정보 마크 올리기 - 배열을 하드코딩으로 넣었음 -
-      받아 올수만 있으면 될듯!
-    </title>
+    <title>학교 위치 정보 지도 - Vercel 배포 완성 버전</title>
     <link rel="stylesheet" href="style.css" />
-    <script>
-      // 배포 시 자동으로 proxyBase를 설정합니다.
-      // Vercel 환경과 로컬 환경을 자동으로 판별합니다.
-      if (!window.PROXY_BASE) {
-        if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-          // 로컬 개발 환경: 로컬 프록시 서버 사용
-          window.PROXY_BASE = 'http://localhost:3000/proxy?url=';
-        } else {
-          // Vercel 배포 환경: 서버리스 API 엔드포인트 사용
-          window.PROXY_BASE = '/api/schoolinfo?';
-        }
-      }
-    </script>
     <script src="https://developers.kakao.com/sdk/js/kakao.js"></script>
     <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=920f04a92b0d4bff8ceccf191eede4a3&libraries=services"></script>
   </head>
@@ -29,652 +13,373 @@
         id="map"
         style="width: 100%; height: 100%; position: relative; overflow: hidden"
       ></div>
-      <!-- 학교 종류 선택 컨트롤 (초등/중등/고등) -->
+      
+      <!-- 학교 종류 선택 컨트롤 -->
       <div class="custom_selector_school_grade radius_border">
         <span id="btnElemtarySchool" class="btn" onclick="setSchoolInfo('Elementary')">초등학교</span>
         <span id="btnMiddleSchool" class="btn" onclick="setSchoolInfo('Middle')">중학교</span>
         <span id="btnHighSchool" class="selected_btn" onclick="setSchoolInfo('High')">고등학교</span>
       </div>
       
-      <!-- 지도타입 선택 컨트롤 (지도/스카이뷰) -->
+      <!-- 지도타입 선택 컨트롤 -->
       <div class="custom_typecontrol radius_border">
-        <span
-          id="btnRoadmap"
-          class="selected_btn"
-          onclick="setMapType('roadmap')"
-          >지도</span
-        >
-        <span id="btnSkyview" class="btn" onclick="setMapType('skyview')"
-          >스카이뷰</span
-        >
+        <span id="btnRoadmap" class="selected_btn" onclick="setMapType('roadmap')">지도</span>
+        <span id="btnSkyview" class="btn" onclick="setMapType('skyview')">스카이뷰</span>
       </div>
       
-      <!-- 지도 확대, 축소 컨트롤 -->
+      <!-- 지도 확대/축소 컨트롤 -->
       <div class="custom_zoomcontrol radius_border" aria-label="지도 확대 축소">
         <span class="zoom-btn" onclick="zoomIn()">
-          <img
-            src="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/ico_plus.png"
-            alt="확대"
-          />
+          <img src="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/ico_plus.png" alt="확대" />
         </span>
         <span class="zoom-btn" onclick="zoomOut()">
-          <img
-            src="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/ico_minus.png"
-            alt="축소"
-          />
+          <img src="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/ico_minus.png" alt="축소" />
         </span>
       </div>
     </div>
 
     <!-- ==================== 전역 변수 선언 섹션 ==================== -->
     <script>
-      // function.js에서 접근할 수 있도록 전역변수로 선언합니다.
+      // 지도 및 데이터 관련 전역 변수
       var map;                        // 카카오맵 객체
       let nSchoolMemCnt = 0;          // 학교 멤버 수
-      let markers = [];               // 마커 배열 (중복 생성 방지)
-      let arrAllSchoolData = [];       // API에서 받아온 모든 학교 데이터
-      let arrANC_Data = [];           // addr.json에서 받아온 학생 데이터
-      let arrFetch = [];              // 최종 병합된 데이터
+      let markers = [];               // 마커 배열
+      let arrAllSchoolData = [];       // API 학교 데이터
+      let arrANC_Data = [];           // JSON 학생 데이터
+      let arrFetch = [];              // 병합된 최종 데이터
       
-      // ✅ 추가: 데이터 로드 상태 추적
-      // 두 데이터 소스 모두 로드 완료를 확인하기 위한 플래그입니다.
+      // ✅ 핵심: 데이터 로드 상태 추적
+      // 두 데이터 소스가 모두 로드되었는지 확인하는 플래그
       let dataLoadStatus = {
-        schoolDataLoaded: false,      // 학교 API 데이터 로드 여부
-        ancDataLoaded: false          // 학생 JSON 데이터 로드 여부
+        schoolDataLoaded: false,      // 학교 API 데이터 로드 완료 여부
+        ancDataLoaded: false          // 학생 JSON 데이터 로드 완료 여부
       };
+
+      // ✅ API 호출 로그 출력용 카운터
+      let apiRequestCount = 0;        // API 요청 횟수 추적
     </script>
 
     <script src="function.js"></script>
     
-    <!-- ==================== 학생 데이터 직접 포함 섹션 ==================== -->
-    <!-- 네트워크 오류 시 대체용 학생 데이터를 직접 정의합니다. -->
+    <!-- ==================== 학생 데이터 백업 섹션 ==================== -->
     <script>
-      // addr.json 파일 로드 실패 시 이 함수가 호출됩니다.
-      // 하드코딩된 데이터로 백업하는 역할을 합니다.
+      // 학생 데이터 로드 실패 시 백업 데이터 로드
       function loadAddrDataDirectly() {
-        // 학생 데이터를 배열로 정의합니다.
+        console.log('⚠️ 학생 데이터를 직접 로드합니다 (백업 데이터)');
+        
+        // 하드코딩된 학생 데이터 (addr.json 로드 실패 시 사용)
         arrANC_Data = [
-          {
-            "Name": "김예찬",
-            "Phone": "010-5909-6427",
-            "Birthday": "2010. 10. 27",
-            "School": "문시중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 1
-          },
-          {
-            "Name": "이태민",
-            "Phone": "010-7622-0135",
-            "Birthday": "2010. 09. 10",
-            "School": "운천중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 1
-          },
-          {
-            "Name": "이예은",
-            "Phone": "010-3833-2593",
-            "Birthday": "2010. 10. 20",
-            "School": "능실중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 1
-          },
-          {
-            "Name": "김하닮",
-            "Phone": "010-2127-4893",
-            "Birthday": "2009. 08. 09",
-            "School": "운천중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 2
-          },
-          {
-            "Name": "전주역",
-            "Phone": "010-7571-6215",
-            "Birthday": "2009. 10. 21",
-            "School": "운천중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 2
-          },
-          {
-            "Name": "이유빈",
-            "Phone": "010-3586-4031",
-            "Birthday": "2009. 08. 09",
-            "School": "운천중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 2
-          },
-          {
-            "Name": "안정은",
-            "Phone": "010-565-54194",
-            "Birthday": "2009. 04. 01",
-            "School": "안용중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 2
-          },
-          {
-            "Name": "아브리아나",
-            "Phone": "010-8405-0237",
-            "Birthday": "2009. 05. 19",
-            "School": "운천중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 2
-          },
-          {
-            "Name": "원예진",
-            "Phone": "010-8766-2136",
-            "Birthday": "2009. 03. 21",
-            "School": "안용중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 2
-          },
-          {
-            "Name": "이다민",
-            "Phone": "010-5891-0529",
-            "Birthday": "2008. 05. 28",
-            "School": "운천중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 3
-          },
-          {
-            "Name": "김세찬",
-            "Phone": "010-5936-3805",
-            "Birthday": "2008. 07. 04",
-            "School": "문시중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 3
-          },
-          {
-            "Name": "이예진",
-            "Phone": "010-7683-2593",
-            "Birthday": "2008. 04. 26",
-            "School": "능실중학교",
-            "SCHOOL_RK_DIV_NM": "중학교",
-            "Year": 3
-          },
-          {
-            "Name": "전세라",
-            "Phone": "010-4150-3927",
-            "Birthday": "2007. 02. 01",
-            "School": "운천고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 1
-          },
-          {
-            "Name": "김누림",
-            "Phone": "010-4112-2327",
-            "Birthday": "2007. 05. 11",
-            "School": "운천고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 1
-          },
-          {
-            "Name": "최보검",
-            "Phone": "010-6237-2074",
-            "Birthday": "2006. 11. 24",
-            "School": "운암고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 2
-          },
-          {
-            "Name": "최주은",
-            "Phone": "010-7343-0664",
-            "Birthday": "2006. 09. 28",
-            "School": "운천고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 2
-          },
-          {
-            "Name": "유민영",
-            "Phone": "010-5343-2000",
-            "Birthday": "2006. 12. 31",
-            "School": "예당고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 2
-          },
-          {
-            "Name": "전지호",
-            "Phone": "010-9124-8985",
-            "Birthday": "2007. 02. 03",
-            "School": "경기과학고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 2
-          },
-          {
-            "Name": "김세이",
-            "Phone": "010-4583-2327",
-            "Birthday": "2005. 05. 23",
-            "School": "운천고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 3
-          },
-          {
-            "Name": "전세영",
-            "Phone": "010-3927-0768",
-            "Birthday": "2005. 02. 18",
-            "School": "운암고등학교",
-            "SCHOOL_RK_DIV_NM": "고등학교",
-            "Year": 3
-          }
+          {"Name": "김예찬", "Phone": "010-5909-6427", "Birthday": "2010. 10. 27", "School": "문시중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 1},
+          {"Name": "이태민", "Phone": "010-7622-0135", "Birthday": "2010. 09. 10", "School": "운천중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 1},
+          {"Name": "이예은", "Phone": "010-3833-2593", "Birthday": "2010. 10. 20", "School": "능실중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 1},
+          {"Name": "김하닮", "Phone": "010-2127-4893", "Birthday": "2009. 08. 09", "School": "운천중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 2},
+          {"Name": "전주역", "Phone": "010-7571-6215", "Birthday": "2009. 10. 21", "School": "운천중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 2},
+          {"Name": "이유빈", "Phone": "010-3586-4031", "Birthday": "2009. 08. 09", "School": "운천중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 2},
+          {"Name": "안정은", "Phone": "010-565-54194", "Birthday": "2009. 04. 01", "School": "안용중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 2},
+          {"Name": "아브리아나", "Phone": "010-8405-0237", "Birthday": "2009. 05. 19", "School": "운천중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 2},
+          {"Name": "원예진", "Phone": "010-8766-2136", "Birthday": "2009. 03. 21", "School": "안용중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 2},
+          {"Name": "이다민", "Phone": "010-5891-0529", "Birthday": "2008. 05. 28", "School": "운천중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 3},
+          {"Name": "김세찬", "Phone": "010-5936-3805", "Birthday": "2008. 07. 04", "School": "문시중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 3},
+          {"Name": "이예진", "Phone": "010-7683-2593", "Birthday": "2008. 04. 26", "School": "능실중학교", "SCHOOL_RK_DIV_NM": "중학교", "Year": 3},
+          {"Name": "전세라", "Phone": "010-4150-3927", "Birthday": "2007. 02. 01", "School": "운천고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 1},
+          {"Name": "김누림", "Phone": "010-4112-2327", "Birthday": "2007. 05. 11", "School": "운천고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 1},
+          {"Name": "최보검", "Phone": "010-6237-2074", "Birthday": "2006. 11. 24", "School": "운암고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 2},
+          {"Name": "최주은", "Phone": "010-7343-0664", "Birthday": "2006. 09. 28", "School": "운천고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 2},
+          {"Name": "유민영", "Phone": "010-5343-2000", "Birthday": "2006. 12. 31", "School": "예당고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 2},
+          {"Name": "전지호", "Phone": "010-9124-8985", "Birthday": "2007. 02. 03", "School": "경기과학고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 2},
+          {"Name": "김세이", "Phone": "010-4583-2327", "Birthday": "2005. 05. 23", "School": "운천고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 3},
+          {"Name": "전세영", "Phone": "010-3927-0768", "Birthday": "2005. 02. 18", "School": "운암고등학교", "SCHOOL_RK_DIV_NM": "고등학교", "Year": 3}
         ];
-        console.log('✓ 학생 데이터 로드 성공 (직접 로드):', arrANC_Data.length, '명');
-        // 데이터 로드 상태 업데이트
+        
         dataLoadStatus.ancDataLoaded = true;
-        // 학교 데이터도 이미 로드되었다면 processData() 호출
+        console.log('✓ 학생 데이터 백업 로드 완료:', arrANC_Data.length, '명');
+        
+        // 학교 데이터도 준비되었으면 처리 시작
         if (dataLoadStatus.schoolDataLoaded) {
           window.processData();
         }
       }
     </script>
     
-    <!-- ==================== 메인 로직 섹션 ==================== -->
+    <!-- ==================== 메인 초기화 로직 ==================== -->
     <script>
-      // Kakao SDK 로드 완료 후 실행되는 함수입니다.
+      /**
+       * 카카오 SDK 로드 후 지도 초기화 함수
+       */
       function initializeMap() {
-        // 지도 컨테이너와 옵션 설정
+        // 지도 컨테이너 설정
         var mapContainer = document.getElementById("map");
         var mapOption = {
-          // 오산 세교 지역 중심
-          center: new kakao.maps.LatLng(37.1723, 127.0585),
-          level: 8, // 지도 확대 레벨 (8 = 중간 줌)
+          center: new kakao.maps.LatLng(37.1723, 127.0585), // 오산 세교
+          level: 8
         };
         
-        // 전역 map 변수에 지도 객체 할당합니다.
         map = new kakao.maps.Map(mapContainer, mapOption);
-
         console.log('🗺️ 지도 초기화 완료');
 
-        //=======================================================================================
-        // 학교 데이터와 학생 데이터를 병합하여 지도에 표시합니다.
-        //=======================================================================================
-        
-        // processData() 함수: 병합된 데이터를 지도에 표시하는 핵심 함수
+        // ========================================================
+        // ✅ 핵심 함수: 데이터 병합 및 지도 표시
+        // ========================================================
         window.processData = function() {
           console.log('📊 데이터 처리 시작...');
+          console.log('  - 학교 데이터:', arrAllSchoolData.length, '개');
+          console.log('  - 학생 데이터:', arrANC_Data.length, '명');
           
-          // 기존 마커 모두 제거: 새 학교 타입 선택 시 이전 마커를 제거합니다.
+          // 기존 마커 제거
           try {
             if (markers && markers.length > 0) {
               for (var mi = 0; mi < markers.length; mi++) {
                 try { 
-                  markers[mi].setMap(null); // 지도에서 마커 제거
+                  markers[mi].setMap(null);
                 } catch(e){}
               }
-              markers.length = 0; // 배열 초기화
+              markers.length = 0;
             }
           } catch(e) { 
             console.warn('마커 제거 중 오류', e); 
           }
 
-          // 최종 병합 데이터 배열 초기화
+          // 최종 데이터 배열 초기화
           arrFetch.length = 0;
 
-          // 학교 데이터 반복: 각 학교와 일치하는 학생 찾기
+          // 학교와 학생 데이터 병합
           arrAllSchoolData.forEach(schoolData => {
-            // filter() 사용: 한 학교에 여러 학생이 있을 수 있음
-            const matchedSchoolData = arrANC_Data.filter(
-              ancData => ancData.School === schoolData.SCHUL_NM
+            // 학교와 일치하는 모든 학생 찾기
+            const matchedStudents = arrANC_Data.filter(
+              student => student.School === schoolData.SCHUL_NM
             );
 
-            // 일치하는 학생이 있을 경우만 처리
-            if (matchedSchoolData.length > 0) {
-              // 학생 이름들을 합쳐서 표시 (학년 포함)
-              // 예: '정이려(2), 정이도(2)'
+            // 일치하는 학생이 있으면 추가
+            if (matchedStudents.length > 0) {
               let names = [];
-              matchedSchoolData.forEach(metchedData => {
-                var nm = metchedData.Name || '';
-                var yr = (metchedData.Year !== undefined && metchedData.Year !== null) 
-                  ? String(metchedData.Year) 
+              matchedStudents.forEach(student => {
+                var name = student.Name || '';
+                var year = (student.Year !== undefined && student.Year !== null) 
+                  ? String(student.Year) 
                   : '';
-                if (yr !== '') nm = nm + '(' + yr + ')'; // 학년 추가
-                names.push(nm);
+                if (year !== '') name = name + '(' + year + ')';
+                names.push(name);
               });
               
-              // 학교 데이터에 학생 정보 병합
-              const dataToAdd = { ...schoolData, Name: names.join(', ') };
-              arrFetch.push(dataToAdd);
+              const mergedData = { ...schoolData, Name: names.join(', ') };
+              arrFetch.push(mergedData);
             }
           });
 
-          console.log('✓ 병합 완료:', arrFetch.length, '개 학교에 학생 정보 추가됨');
+          console.log('✓ 병합 완료:', arrFetch.length, '개 학교');
 
-          // 인덱스 번호 (마커 식별용)
-          let i = 1;
-
-          // 병합된 데이터로 마커와 팝업 생성
+          // 마커 생성 및 팝업 추가
+          let index = 1;
           arrFetch.forEach(element => {
-            // 위도, 경도 추출
             var latitude = element.LTTUD;
             var longitude = element.LGTUD;
 
             // 팝업 내용 생성
             contents = CreateContentsTag(
-              i,
-              element.SCHUL_NM,              // 학교명
-              "",                            // 이미지 URL (있으면 추가)
-              element.SCHUL_RDNMA,           // 도로명 주소
-              element.DTLAD_BRKDN,           // 지번 주소
-              element.HMPG_ADRES || "",      // 홈페이지
-              element.Name,                  // 학생명 (병합된 데이터)
-              element.FOND_SC_CODE || '',    // 설립구분
-              element.USER_TELNO || element.TELNO || '',  // 전화번호
-              element.PERC_FAXNO || element.FAXNO || '', // 팩스번호
-              element.COEDU_SC_CODE || '',   // 공학구분
-              element._stats || null         // 통계 정보
+              index,
+              element.SCHUL_NM,
+              "",
+              element.SCHUL_RDNMA,
+              element.DTLAD_BRKDN,
+              element.HMPG_ADRES || "",
+              element.Name,
+              element.FOND_SC_CODE || '',
+              element.USER_TELNO || element.TELNO || '',
+              element.PERC_FAXNO || element.FAXNO || '',
+              element.COEDU_SC_CODE || '',
+              element._stats || null
             );
 
-            // 지도에 마커 표시
+            // 마커 생성
             var position = new kakao.maps.LatLng(latitude, longitude);
             var marker = new kakao.maps.Marker({
               map: map,
               position: position,
             });
-            markers.push(marker); // 마커 배열에 저장
+            markers.push(marker);
 
-            // 커스텀 오버레이(팝업) 생성
+            // 팝업 생성
             var customOverlay = new kakao.maps.CustomOverlay({
               content: contents,
               map: map,
               position: marker.getPosition()
             });
 
-            // 마커 클릭 이벤트: 클릭 시 팝업 표시
+            // 마커 클릭 시 팝업 표시
             kakao.maps.event.addListener(marker, "click", function () {
               customOverlay.setMap(map);
             });
 
-            // 팝업 닫기 버튼 이벤트 설정
-            AddClickEventListener(i, customOverlay);
-
-            // 기본적으로 팝업은 닫혀있고 마커만 표시
+            // 팝업 닫기 버튼 이벤트
+            AddClickEventListener(index, customOverlay);
             customOverlay.setMap(null);
             
-            i++; // 다음 마커 인덱스
+            index++;
           });
 
-          console.log('✓ 지도 표시 완료:', arrFetch.length, '개 마커 생성됨');
+          console.log('✓ 지도 표시 완료:', markers.length, '개 마커 생성');
         };
 
-        //=======================================================================================
-        // 학교 정보 API 설정 및 요청
-        //=======================================================================================
+        // ========================================================
+        // ✅ 서버리스 API를 통한 학교 데이터 로드
+        // ========================================================
         
-        // API 키 설정
-        var api_key = "";
-        if (typeof window !== 'undefined') {
-          // 브라우저 환경에서만 실행
-          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            // 로컬 개발 환경: 직접 API 키 사용
-            api_key = '78d56edb8f784428854ce15ce720fe86';
-          } else {
-            // Vercel 배포 환경: 서버에서 처리 (API 키 노출 방지)
-            api_key = '';
-          }
-        }
-
         var apiBase = 'https://www.schoolinfo.go.kr/openApi.do';
-
-        // 지역 코드: 오산, 용인, 수원 등 여러 시군구
-        var sggParam = '41370,41110,41591,41593,41595,41597';
-
-        // 통계 데이터 연도 계산
-        // 6월 이상이면 올해, 아니면 작년 데이터 사용
+        var sggParam = '41370,41110,41591,41593,41595,41597'; // 여러 지역
+        
         var now = new Date();
         var apiPbanYr = (now.getMonth() + 1 >= 6) ? now.getFullYear() : (now.getFullYear() - 1);
         var statsDisplayYear = apiPbanYr - 1;
+        var currentSchulKnd = '04'; // 기본: 고등학교
 
-        // 현재 선택된 학교 종류 (기본값: 고등학교)
-        var currentSchulKnd = '04';
-
-        // 대상 URL 생성 함수
+        // URL 구성 함수
         function buildTargetUrl(sgg, apiType, schulKnd) {
           apiType = typeof apiType !== 'undefined' ? apiType : '0';
           schulKnd = typeof schulKnd !== 'undefined' ? schulKnd : currentSchulKnd;
-          var queryParams = '?' + encodeURIComponent('apiKey') + '='+api_key;
-          queryParams += '&' + encodeURIComponent('apiType') + '=' + encodeURIComponent(apiType);
-          queryParams += '&' + encodeURIComponent('sidoCode') + '=' + encodeURIComponent('41'); // 경기도
-          queryParams += '&' + encodeURIComponent('sggCode') + '=' + encodeURIComponent(sgg);
-          queryParams += '&' + encodeURIComponent('schulKndCode') + '=' + encodeURIComponent(schulKnd);
-          return apiBase + queryParams;
+          
+          // ✅ 서버리스 API 엔드포인트 사용
+          return `/api/schoolinfo?sgg=${encodeURIComponent(sgg)}&apiType=${encodeURIComponent(apiType)}&sidoCode=41&schulKndCode=${encodeURIComponent(schulKnd)}`;
         }
 
-        // 프록시 설정: 로컬 또는 Vercel 환경 자동 판별
-        var proxyBase = (typeof window.PROXY_BASE !== 'undefined') 
-          ? window.PROXY_BASE 
-          : 'http://localhost:3000/proxy?url=';
-
-        // 안전한 fetch 헬퍼 함수: 프록시를 통한 요청
-        function tryFetchRaw(targetUrl) {
-          var attemptedProxy = null;
-
-          try {
-            // Vercel 서버리스 API 사용 시
-            if (proxyBase && proxyBase.indexOf('/api/schoolinfo') !== -1) {
-              try {
-                var u = new URL(targetUrl);
-                // 학교정보 API 확인
-                if (u.hostname && u.hostname.indexOf('schoolinfo.go.kr') !== -1) {
-                  var srcParams = new URLSearchParams(u.search);
-                  var sgg = srcParams.get('sggCode');
-                  var apiTypeParam = srcParams.get('apiType') || '0';
-                  var schul = srcParams.get('schulKndCode') || currentSchulKnd;
-                  
-                  // 서버 API 엔드포인트에 파라미터 전달
-                  attemptedProxy = proxyBase;
-                  if (attemptedProxy.indexOf('?') === -1) attemptedProxy += '?';
-                  if (!attemptedProxy.endsWith('?') && !attemptedProxy.endsWith('&')) attemptedProxy += '&';
-                  attemptedProxy += 'sgg=' + encodeURIComponent(sgg || '') 
-                    + '&apiType=' + encodeURIComponent(apiTypeParam) 
-                    + '&schulKndCode=' + encodeURIComponent(schul || '');
-                } else {
-                  attemptedProxy = proxyBase + encodeURIComponent(targetUrl);
-                }
-              } catch (e) {
-                attemptedProxy = proxyBase + encodeURIComponent(targetUrl);
-              }
-            } else {
-              // 로컬 프록시 사용
-              attemptedProxy = proxyBase ? (proxyBase + encodeURIComponent(targetUrl)) : targetUrl;
-            }
-          } catch (e) {
-            attemptedProxy = proxyBase ? (proxyBase + encodeURIComponent(targetUrl)) : targetUrl;
-          }
-
-          // 프록시를 통한 fetch 요청
-          return fetch(attemptedProxy, { credentials: 'omit' })
-            .then(function (res) {
-              if (!res.ok && proxyBase) {
-                throw new Error('Proxy request failed with status ' + res.status);
-              }
-              return res;
-            })
-            .catch(function (err) {
-              if (proxyBase) {
-                throw err; // 프록시 실패 시 백업하지 않음
-              }
-              // 프록시 없으면 직접 요청 시도
-              return fetch(targetUrl);
-            });
-        }
-
-        // JSON 응답 반환 함수
+        // fetch 래퍼 함수
         function tryFetchJson(targetUrl) {
-          return tryFetchRaw(targetUrl)
-            .then(function (r) { 
-              return r.json(); 
+          apiRequestCount++;
+          const requestNum = apiRequestCount;
+          console.log(`📡 API 요청 #${requestNum}:`, targetUrl);
+          
+          return fetch(targetUrl)
+            .then(response => {
+              if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+              }
+              return response.json();
             })
             .catch(err => {
-              console.error('❌ fetch JSON 실패:', err.message);
+              console.error(`❌ 요청 #${requestNum} 실패:`, err.message);
               throw err;
             });
         }
 
-        // apiType=09 (통계 데이터) 요청 함수
+        // 통계 데이터 로드 함수
         function fetchStatsForSggCodes(codes) {
-          var statsFetches = codes.map(code => {
-            var t = buildTargetUrl(code, '09');
-            t += '&' + encodeURIComponent('pbanYr') + '=' + encodeURIComponent(apiPbanYr);
-            return tryFetchJson(t)
+          var fetches = codes.map(code => {
+            var url = `/api/schoolinfo?sgg=${encodeURIComponent(code)}&apiType=09&sidoCode=41&schulKndCode=${currentSchulKnd}&pbanYr=${apiPbanYr}`;
+            return tryFetchJson(url)
               .catch(e => { 
-                console.warn('통계 요청 실패:', code, e.message); 
+                console.warn(`⚠️ 통계 로드 실패 (${code}):`, e.message); 
                 return null; 
               });
           });
 
-          return Promise.all(statsFetches).then(results => {
-            var map = {};
+          return Promise.all(fetches).then(results => {
+            var statsMap = {};
             var totalCount = 0;
             
-            // 통계 응답 데이터 처리
             results.forEach(d => {
               if (d && d.resultCode === 'success' && Array.isArray(d.list)) {
                 totalCount += d.list.length;
                 d.list.forEach(item => {
-                  // 학교 코드나 학교명 기준으로 매핑
-                  if (item.SCHUL_CODE) map[item.SCHUL_CODE] = item;
-                  if (item.SCHUL_NM && !map[item.SCHUL_NM]) map[item.SCHUL_NM] = item;
+                  if (item.SCHUL_CODE) statsMap[item.SCHUL_CODE] = item;
+                  if (item.SCHUL_NM && !statsMap[item.SCHUL_NM]) statsMap[item.SCHUL_NM] = item;
                 });
-              } else {
-                console.warn('⚠️ 통계 응답 문제:', d?.resultMsg);
               }
             });
-            console.log('📊 통계 데이터 매핑 완료:', totalCount, '개');
-            return map;
+            
+            console.log('📊 통계 데이터 매핑:', totalCount, '개');
+            return statsMap;
           });
         }
 
-        // 지역 코드 배열
         var sggCodes = sggParam.split(',').map(s => s.trim()).filter(Boolean);
 
-        // 초기 데이터 로드 (단일 또는 다중 지역)
-        if (sggCodes.length === 1) {
-          // 단일 지역: 간단한 요청
-          var targetUrl = buildTargetUrl(sggCodes[0]);
-          tryFetchJson(targetUrl)
-            .then(data => {
-              console.log('📡 초기 로드 API 응답:', {
-                status: data?.resultCode,
-                count: data?.list?.length || 0
-              });
-              
-              if (data && data.resultCode === 'success' && Array.isArray(data.list) && data.list.length > 0) {
-                arrAllSchoolData = data.list;
-                dataLoadStatus.schoolDataLoaded = true;
-                console.log('✓ 학교 데이터 로드 완료:', arrAllSchoolData.length, '개');
-                
-                // ✅ 수정: 통계 데이터 병합
-                fetchStatsForSggCodes(sggCodes).then(statsMap => {
-                  arrAllSchoolData.forEach(s => {
-                    if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) 
-                      s._stats = statsMap[s.SCHUL_CODE];
-                    else if (statsMap[s.SCHUL_NM]) 
-                      s._stats = statsMap[s.SCHUL_NM];
-                    if (s._stats) 
-                      s._stats._displayYear = statsDisplayYear;
-                  });
-                  
-                  // ✅ 두 데이터 모두 로드 완료 시 처리
-                  if (dataLoadStatus.ancDataLoaded) {
-                    window.processData();
-                  }
-                }).catch(e => { 
-                  console.warn('통계 병합 실패', e); 
-                  if (dataLoadStatus.ancDataLoaded) window.processData();
-                });
-              } else {
-                console.warn('⚠️ 학교 데이터 없음:', data?.resultMsg);
-                loadAddrDataDirectly();
-              }
-            })
-            .catch(err => {
-              console.error('❌ 초기 로드 실패:', err.message);
-              loadAddrDataDirectly();
+        // 학교 데이터 초기 로드
+        console.log('📍 학교 데이터 로드 시작...');
+        
+        var fetches = sggCodes.map(code => {
+          var t = buildTargetUrl(code);
+          return tryFetchJson(t)
+            .catch(e => { 
+              console.warn(`요청 실패 (${code}):`, e.message); 
+              return null; 
             });
-        } else {
-          // 다중 지역: 병렬 요청
-          var fetches = sggCodes.map(code => {
-            var t = buildTargetUrl(code);
-            return tryFetchJson(t)
-              .catch(e => { 
-                console.warn('지역별 요청 실패:', code, e.message); 
-                return null; 
-              });
-          });
+        });
 
-          Promise.all(fetches).then(results => {
-            var combined = [];
-            results.forEach(d => {
-              if (d && d.resultCode === 'success' && Array.isArray(d.list)) {
-                combined = combined.concat(d.list);
-              } else {
-                console.warn('⚠️ 일부 요청 실패:', d?.resultMsg);
-              }
-            });
-
-            if (combined.length > 0) {
-              arrAllSchoolData = combined;
-              dataLoadStatus.schoolDataLoaded = true;
-              console.log('✓ 병합된 학교 데이터:', arrAllSchoolData.length, '개');
-              
-              // ✅ 통계 데이터 병합
-              fetchStatsForSggCodes(sggCodes).then(statsMap => {
-                arrAllSchoolData.forEach(s => {
-                  if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) 
-                    s._stats = statsMap[s.SCHUL_CODE];
-                  else if (statsMap[s.SCHUL_NM]) 
-                    s._stats = statsMap[s.SCHUL_NM];
-                  if (s._stats) 
-                    s._stats._displayYear = statsDisplayYear;
-                });
-                
-                // ✅ 두 데이터 모두 로드 완료 시 처리
-                if (dataLoadStatus.ancDataLoaded) {
-                  window.processData();
-                }
-              }).catch(e => { 
-                console.warn('통계 병합 실패', e); 
-                if (dataLoadStatus.ancDataLoaded) window.processData();
-              });
-            } else {
-              console.warn('⚠️ 모든 요청에서 데이터 없음');
-              loadAddrDataDirectly();
-            }
-          }).catch(err => {
-            console.error('❌ 병렬 요청 처리 실패:', err.message);
-            loadAddrDataDirectly();
-          });
-        }
-
-        // ✅ 학교 종류 선택 함수 (초등/중등/고등)
-        window.setSchoolInfo = function(schooltype) {
-          var elementarySchoolControl = document.getElementById("btnElemtarySchool");
-          var middleSchoolControl = document.getElementById("btnMiddleSchool");
-          var highSchoolControl = document.getElementById("btnHighSchool");
+        Promise.all(fetches).then(results => {
+          var combined = [];
+          var successCount = 0;
           
-          // UI 버튼 상태 업데이트
+          results.forEach((d, idx) => {
+            if (d && d.resultCode === 'success' && Array.isArray(d.list) && d.list.length > 0) {
+              combined = combined.concat(d.list);
+              successCount++;
+              console.log(`✓ 지역 ${sggCodes[idx]}: ${d.list.length}개 학교`);
+            }
+          });
+
+          if (combined.length > 0) {
+            arrAllSchoolData = combined;
+            dataLoadStatus.schoolDataLoaded = true;
+            console.log('✓ 학교 데이터 로드 완료:', combined.length, '개 (', successCount, '개 지역)');
+            
+            // 통계 데이터 병합
+            fetchStatsForSggCodes(sggCodes).then(statsMap => {
+              arrAllSchoolData.forEach(s => {
+                if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) s._stats = statsMap[s.SCHUL_CODE];
+                else if (statsMap[s.SCHUL_NM]) s._stats = statsMap[s.SCHUL_NM];
+                if (s._stats) s._stats._displayYear = statsDisplayYear;
+              });
+              
+              // ✅ 두 데이터 모두 준비되면 처리
+              if (dataLoadStatus.ancDataLoaded) {
+                window.processData();
+              }
+            }).catch(e => { 
+              console.warn('통계 병합 실패:', e.message); 
+              if (dataLoadStatus.ancDataLoaded) window.processData();
+            });
+          } else {
+            console.warn('⚠️ 학교 데이터를 받지 못했습니다');
+            loadAddrDataDirectly();
+          }
+        }).catch(err => {
+          console.error('❌ 학교 데이터 로드 실패:', err.message);
+          loadAddrDataDirectly();
+        });
+
+        // ========================================================
+        // 학교 종류 선택 함수
+        // ========================================================
+        window.setSchoolInfo = function(schooltype) {
+          var elemControl = document.getElementById("btnElemtarySchool");
+          var midControl = document.getElementById("btnMiddleSchool");
+          var highControl = document.getElementById("btnHighSchool");
+          
           if (schooltype === "Elementary") {
-            elementarySchoolControl.className = "selected_btn";
-            middleSchoolControl.className = "btn";
-            highSchoolControl.className = "btn";
+            elemControl.className = "selected_btn";
+            midControl.className = "btn";
+            highControl.className = "btn";
             currentSchulKnd = '02';
           } else if (schooltype === "Middle") {
-            elementarySchoolControl.className = "btn";
-            middleSchoolControl.className = "selected_btn";
-            highSchoolControl.className = "btn";
+            elemControl.className = "btn";
+            midControl.className = "selected_btn";
+            highControl.className = "btn";
             currentSchulKnd = '03';
           } else {
-            elementarySchoolControl.className = "btn";
-            middleSchoolControl.className = "btn";
-            highSchoolControl.className = "selected_btn";
+            elemControl.className = "btn";
+            midControl.className = "btn";
+            highControl.className = "selected_btn";
             currentSchulKnd = '04';
           }
 
-          // 선택된 학교 종류로 새 데이터 로드
+          console.log(`🔄 학교 종류 변경: ${schooltype} (코드: ${currentSchulKnd})`);
+
+          // 새로운 학교 데이터 로드
           var fetches = sggCodes.map(code => {
             var t = buildTargetUrl(code, '0', currentSchulKnd);
-            return tryFetchJson(t)
-              .catch(e => { 
-                console.warn('요청 실패:', code, e.message); 
-                return null; 
-              });
+            return tryFetchJson(t).catch(e => { 
+              console.warn(`요청 실패 (${code}):`, e.message); 
+              return null; 
+            });
           });
 
           Promise.all(fetches).then(results => {
@@ -687,9 +392,8 @@
 
             if (combined.length > 0) {
               arrAllSchoolData = combined;
-              console.log('✓ 선택된 학교 데이터 로드:', arrAllSchoolData.length, '개');
+              console.log('✓ 선택된 학교 데이터:', combined.length, '개');
               
-              // 통계 데이터 병합
               fetchStatsForSggCodes(sggCodes).then(statsMap => {
                 arrAllSchoolData.forEach(s => {
                   if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) s._stats = statsMap[s.SCHUL_CODE];
@@ -698,49 +402,46 @@
                 });
                 window.processData();
               }).catch(e => { 
-                console.warn('통계 병합 실패', e); 
+                console.warn('통계 병합 실패', e.message); 
                 window.processData();
               });
             } else {
-              console.warn('⚠️ 선택한 조건에 데이터 없음');
+              console.warn('⚠️ 데이터 없음');
               window.processData();
             }
           }).catch(err => { 
-            console.error('❌ 학교 목록 요청 실패:', err.message); 
+            console.error('❌ 요청 실패:', err.message); 
             window.processData();
           });
         };
 
-        // ✅ addr.json 파일 로드 (XHR 사용)
+        // ========================================================
+        // addr.json 로드
+        // ========================================================
+        console.log('📝 학생 데이터 로드 시작...');
+        
         var xhr = new XMLHttpRequest();
         xhr.open('GET', './addr.json', true);
         
         xhr.onload = function() {
-          // 파일:// 프로토콜에서는 상태가 0으로 올 수 있습니다.
           if (xhr.status === 200 || xhr.status === 0) {
             try {
-              console.log('📝 addr.json 받음, 길이:', xhr.responseText.length, '자');
               const data = JSON.parse(xhr.responseText);
               
-              // ✅ 데이터 유효성 검사
-              if (!Array.isArray(data)) {
-                throw new Error('addr.json이 배열 형식이 아닙니다');
-              }
-              if (data.length === 0) {
-                throw new Error('addr.json이 비어있습니다');
+              if (!Array.isArray(data) || data.length === 0) {
+                throw new Error('데이터가 배열이 아니거나 비어있습니다');
               }
               
               arrANC_Data = data;
               dataLoadStatus.ancDataLoaded = true;
-              console.log('✓ 주소 데이터 로드 완료 (파일):', arrANC_Data.length, '명');
+              console.log('✓ 학생 데이터 로드 완료:', data.length, '명');
               
-              // ✅ 두 데이터 모두 로드되었으면 processData() 호출
+              // ✅ 두 데이터 모두 로드되면 처리
               if (dataLoadStatus.schoolDataLoaded) {
                 window.processData();
               }
-            } catch (parseErr) {
-              console.warn('⚠️ JSON 파싱 오류:', parseErr.message);
-              console.log('파일 처음 200자:', xhr.responseText.substring(0, 200));
+            } catch (err) {
+              console.warn('⚠️ JSON 파싱 오류:', err.message);
               loadAddrDataDirectly();
             }
           } else {
@@ -750,37 +451,31 @@
         };
         
         xhr.onerror = function() {
-          console.warn('⚠️ 주소 데이터 네트워크 에러');
+          console.warn('⚠️ 파일 로드 네트워크 오류');
           loadAddrDataDirectly();
         };
         
         xhr.send();
-
-        console.log('초기화 완료: 데이터 로드 대기 중...');
       }
 
-      // Kakao SDK 로드 완료 확인 함수
+      // Kakao SDK 로드 확인
       function waitForKakao() {
-        // kakao.maps.LatLng 생성자 존재 여부로 SDK 로드 확인
         if (typeof kakao !== 'undefined' && 
             typeof kakao.maps !== 'undefined' && 
             typeof kakao.maps.LatLng === 'function') {
-          console.log('✓ Kakao SDK 로드 완료');
+          console.log('✓ Kakao SDK 준비 완료');
           initializeMap();
         } else {
-          // 아직 로드되지 않았으면 100ms 후 재시도
           setTimeout(waitForKakao, 100);
         }
       }
 
-      // DOM 준비 또는 페이지 로드 후 실행
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', waitForKakao);
       } else {
         waitForKakao();
       }
       
-      // 페이지 로드 후에도 확인 (안전장치)
       window.addEventListener('load', waitForKakao);
     </script>
   </body>
