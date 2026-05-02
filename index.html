@@ -361,7 +361,9 @@
         //-------------------------------------------------------------------------------------------------------------------------------------------------------
 
         // 위에서 작성한 코드를 사용하여 데이터 처리
-        var api_key = "78d56edb8f784428854ce15ce720fe86";
+        // 클라이언트에 API 키를 두지 않도록 빈 값으로 처리했습니다.
+        // 운영 시에는 서버측 `SCHOOLINFO_API_KEY` 환경변수를 설정하여 사용하세요.
+        var api_key = "";
         var apiBase = 'https://www.schoolinfo.go.kr/openApi.do';
 
         // sggCode 설정: 여러 시를 한 번에 가져오려면 쉼표로 구분하세요.
@@ -428,19 +430,21 @@
             attemptedProxy = proxyBase ? (proxyBase + encodeURIComponent(targetUrl)) : targetUrl;
           }
 
-          return fetch(attemptedProxy, { credentials: 'omit' }).then(function (res) {
-            if (!res.ok && proxyBase) {
-              // 프록시가 응답했지만 4xx/5xx인 경우 직접 호출을 시도
+            return fetch(attemptedProxy, { credentials: 'omit' }).then(function (res) {
+              if (!res.ok && proxyBase) {
+                // 프록시가 설정된 경우에는 브라우저에서 직접 대상 URL로 폴백하지 않습니다.
+                // 대신 호출 실패를 throw 하여 상위에서 처리하도록 합니다.
+                throw new Error('Proxy request failed with status ' + res.status);
+              }
+              return res;
+            }).catch(function (err) {
+              if (proxyBase) {
+                // 프록시가 설정되어 있고 프록시 호출이 실패하면 직접 폴백하지 않고 에러를 전달합니다.
+                throw err;
+              }
+              // 프록시가 없는 경우에만 직접 대상 URL로 시도합니다.
               return fetch(targetUrl);
-            }
-            return res;
-          }).catch(function (err) {
-            if (proxyBase) {
-              // 프록시 접근 실패 시 직접 호출 시도
-              return fetch(targetUrl);
-            }
-            throw err;
-          });
+            });
         }
 
         function tryFetchJson(targetUrl) {
