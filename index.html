@@ -9,11 +9,13 @@
     <link rel="stylesheet" href="style.css" />
     <script>
       // 배포 시 자동으로 proxyBase를 설정합니다.
+      // Vercel 환경과 로컬 환경을 자동으로 판별합니다.
       if (!window.PROXY_BASE) {
         if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+          // 로컬 개발 환경: 로컬 프록시 서버 사용
           window.PROXY_BASE = 'http://localhost:3000/proxy?url=';
         } else {
-          // Vercel에 배포하면 동일 호스트의 serverless 경로를 사용
+          // Vercel 배포 환경: 서버리스 API 엔드포인트 사용
           window.PROXY_BASE = '/api/schoolinfo?';
         }
       }
@@ -27,13 +29,14 @@
         id="map"
         style="width: 100%; height: 100%; position: relative; overflow: hidden"
       ></div>
-      <!-- 지도타입 컨트롤 div 입니다 -->
+      <!-- 학교 종류 선택 컨트롤 (초등/중등/고등) -->
       <div class="custom_selector_school_grade radius_border">
         <span id="btnElemtarySchool" class="btn" onclick="setSchoolInfo('Elementary')">초등학교</span>
         <span id="btnMiddleSchool" class="btn" onclick="setSchoolInfo('Middle')">중학교</span>
         <span id="btnHighSchool" class="selected_btn" onclick="setSchoolInfo('High')">고등학교</span>
       </div>
-      <!-- 지도타입 컨트롤 div 입니다 -->
+      
+      <!-- 지도타입 선택 컨트롤 (지도/스카이뷰) -->
       <div class="custom_typecontrol radius_border">
         <span
           id="btnRoadmap"
@@ -45,7 +48,8 @@
           >스카이뷰</span
         >
       </div>
-      <!-- 지도 확대, 축소 컨트롤 div 입니다 -->
+      
+      <!-- 지도 확대, 축소 컨트롤 -->
       <div class="custom_zoomcontrol radius_border" aria-label="지도 확대 축소">
         <span class="zoom-btn" onclick="zoomIn()">
           <img
@@ -61,22 +65,34 @@
         </span>
       </div>
     </div>
-    <!-- 전역 변수 선언 -->
+
+    <!-- ==================== 전역 변수 선언 섹션 ==================== -->
     <script>
-      // function.js에서 접근할 수 있도록 전역변수로 선언
-      var map;
-      let nSchoolMemCnt = 0;
-      let markers = [];
-      let arrAllSchoolData = [];
-      let arrANC_Data = [];
-      let arrFetch = [];
+      // function.js에서 접근할 수 있도록 전역변수로 선언합니다.
+      var map;                        // 카카오맵 객체
+      let nSchoolMemCnt = 0;          // 학교 멤버 수
+      let markers = [];               // 마커 배열 (중복 생성 방지)
+      let arrAllSchoolData = [];       // API에서 받아온 모든 학교 데이터
+      let arrANC_Data = [];           // addr.json에서 받아온 학생 데이터
+      let arrFetch = [];              // 최종 병합된 데이터
+      
+      // ✅ 추가: 데이터 로드 상태 추적
+      // 두 데이터 소스 모두 로드 완료를 확인하기 위한 플래그입니다.
+      let dataLoadStatus = {
+        schoolDataLoaded: false,      // 학교 API 데이터 로드 여부
+        ancDataLoaded: false          // 학생 JSON 데이터 로드 여부
+      };
     </script>
 
     <script src="function.js"></script>
     
-    <!-- addr.json 데이터를 직접 포함 -->
+    <!-- ==================== 학생 데이터 직접 포함 섹션 ==================== -->
+    <!-- 네트워크 오류 시 대체용 학생 데이터를 직접 정의합니다. -->
     <script>
+      // addr.json 파일 로드 실패 시 이 함수가 호출됩니다.
+      // 하드코딩된 데이터로 백업하는 역할을 합니다.
       function loadAddrDataDirectly() {
+        // 학생 데이터를 배열로 정의합니다.
         arrANC_Data = [
           {
             "Name": "김예찬",
@@ -239,146 +255,176 @@
             "Year": 3
           }
         ];
-        console.log('✓ 학생 데이터 로드 성공 (직접):', arrANC_Data.length, '개');
-        window.processData();
+        console.log('✓ 학생 데이터 로드 성공 (직접 로드):', arrANC_Data.length, '명');
+        // 데이터 로드 상태 업데이트
+        dataLoadStatus.ancDataLoaded = true;
+        // 학교 데이터도 이미 로드되었다면 processData() 호출
+        if (dataLoadStatus.schoolDataLoaded) {
+          window.processData();
+        }
       }
     </script>
     
+    <!-- ==================== 메인 로직 섹션 ==================== -->
     <script>
-      // Kakao SDK 로드 완료 후 실행되는 함수
+      // Kakao SDK 로드 완료 후 실행되는 함수입니다.
       function initializeMap() {
-        var mapContainer = document.getElementById("map"), // 지도를 표시할 div
-        mapOption = {
-          center: new kakao.maps.LatLng(37.1723, 127.0585),   // 오산 세교 지역
-          // center: new kakao.maps.LatLng(33.451475, 126.570528), // 제주도 지역
-          level: 8, // 지도의 확대 레벨
+        // 지도 컨테이너와 옵션 설정
+        var mapContainer = document.getElementById("map");
+        var mapOption = {
+          // 오산 세교 지역 중심
+          center: new kakao.maps.LatLng(37.1723, 127.0585),
+          level: 8, // 지도 확대 레벨 (8 = 중간 줌)
         };
-        ///33.451475, 126.570528
-        map = new kakao.maps.Map(mapContainer, mapOption); // 지도를 생성합니다 (전역변수에 할당)
+        
+        // 전역 map 변수에 지도 객체 할당합니다.
+        map = new kakao.maps.Map(mapContainer, mapOption);
 
-        //=======================================================================================================================================================
-        // 내가 해본거 말고 다른걸로 해보는것
-        // 2023.03.08
-        //=======================================================================================================================================================
-        // arrAllSchoolData와 arrANC_Data를 비교하여 일치하는 데이터를 찾아서 처리하는 함수
+        console.log('🗺️ 지도 초기화 완료');
+
+        //=======================================================================================
+        // 학교 데이터와 학생 데이터를 병합하여 지도에 표시합니다.
+        //=======================================================================================
+        
+        // processData() 함수: 병합된 데이터를 지도에 표시하는 핵심 함수
         window.processData = function() {
-          // 기존 마커 제거: 새 학교 타입 선택 시 이전 마커를 모두 제거합니다.
+          console.log('📊 데이터 처리 시작...');
+          
+          // 기존 마커 모두 제거: 새 학교 타입 선택 시 이전 마커를 제거합니다.
           try {
             if (markers && markers.length > 0) {
               for (var mi = 0; mi < markers.length; mi++) {
-                try { markers[mi].setMap(null); } catch(e){}
+                try { 
+                  markers[mi].setMap(null); // 지도에서 마커 제거
+                } catch(e){}
               }
-              markers.length = 0;
+              markers.length = 0; // 배열 초기화
             }
-          } catch(e) { console.warn('마커 제거 중 오류', e); }
+          } catch(e) { 
+            console.warn('마커 제거 중 오류', e); 
+          }
 
-          //const arrFetch = [];
+          // 최종 병합 데이터 배열 초기화
           arrFetch.length = 0;
 
+          // 학교 데이터 반복: 각 학교와 일치하는 학생 찾기
           arrAllSchoolData.forEach(schoolData => {
-            //const matchedSchoolData = arrANC_Data.find(ancData => ancData.School === schoolData.SCHUL_NM);          // find로 했을 때 - 단수일경우      
-            const matchedSchoolData = arrANC_Data.filter(ancData => ancData.School === schoolData.SCHUL_NM);          // filter 로 했을 때 - 복수일 경우       
+            // filter() 사용: 한 학교에 여러 학생이 있을 수 있음
+            const matchedSchoolData = arrANC_Data.filter(
+              ancData => ancData.School === schoolData.SCHUL_NM
+            );
 
-            // find로 했을 때 - 단수일경우
-            // if (matchedSchoolData) {
-            //     const dataToAdd = { ...schoolData, name: matchedSchoolData.Name };
-            //     //console.log("schoolData.FACLT_NM : ", schoolData.FACLT_NM, "dataToAdd", dataToAdd);
-            //     arrFetch.push(dataToAdd);
-            // }
-
-            // filter 로 했을 때 - 복수일 경우 
-            // 합쳐진 학생 이름에 학년을 괄호로 붙여 표시합니다. 예: '정이려(2)'
-            let names = [];
+            // 일치하는 학생이 있을 경우만 처리
             if (matchedSchoolData.length > 0) {
+              // 학생 이름들을 합쳐서 표시 (학년 포함)
+              // 예: '정이려(2), 정이도(2)'
+              let names = [];
               matchedSchoolData.forEach(metchedData => {
                 var nm = metchedData.Name || '';
-                var yr = (metchedData.Year !== undefined && metchedData.Year !== null) ? String(metchedData.Year) : '';
-                if (yr !== '') nm = nm + '(' + yr + ')';
+                var yr = (metchedData.Year !== undefined && metchedData.Year !== null) 
+                  ? String(metchedData.Year) 
+                  : '';
+                if (yr !== '') nm = nm + '(' + yr + ')'; // 학년 추가
                 names.push(nm);
               });
+              
+              // 학교 데이터에 학생 정보 병합
               const dataToAdd = { ...schoolData, Name: names.join(', ') };
               arrFetch.push(dataToAdd);
             }
           });
 
-          let i = 1; // 이런 경우 굳이 인덱스 일 필요(0으로 시작할 필요)가?
+          console.log('✓ 병합 완료:', arrFetch.length, '개 학교에 학생 정보 추가됨');
 
-          //.log(arrFetch);
+          // 인덱스 번호 (마커 식별용)
+          let i = 1;
+
+          // 병합된 데이터로 마커와 팝업 생성
           arrFetch.forEach(element => {
-            console.log('Popup data:', element.SCHUL_NM, element.SCHUL_CODE, 'has_stats:', !!element._stats, element._stats || '(no _stats)');
-          var latitude = element.LTTUD;
-          var longitude = element.LGTUD;
+            // 위도, 경도 추출
+            var latitude = element.LTTUD;
+            var longitude = element.LGTUD;
 
+            // 팝업 내용 생성
+            contents = CreateContentsTag(
+              i,
+              element.SCHUL_NM,              // 학교명
+              "",                            // 이미지 URL (있으면 추가)
+              element.SCHUL_RDNMA,           // 도로명 주소
+              element.DTLAD_BRKDN,           // 지번 주소
+              element.HMPG_ADRES || "",      // 홈페이지
+              element.Name,                  // 학생명 (병합된 데이터)
+              element.FOND_SC_CODE || '',    // 설립구분
+              element.USER_TELNO || element.TELNO || '',  // 전화번호
+              element.PERC_FAXNO || element.FAXNO || '', // 팩스번호
+              element.COEDU_SC_CODE || '',   // 공학구분
+              element._stats || null         // 통계 정보
+            );
 
-          contents = CreateContentsTag(
-            i,
-            element.SCHUL_NM,
-            "",
-            element.SCHUL_RDNMA,
-            element.DTLAD_BRKDN,
-            element.HMPG_ADRES || "",
-            element.Name,
-            element.FOND_SC_CODE || '',
-            element.USER_TELNO || element.TELNO || '',
-            element.PERC_FAXNO || element.FAXNO || '',
-            element.COEDU_SC_CODE || '',
-            element._stats || null
-          );
+            // 지도에 마커 표시
+            var position = new kakao.maps.LatLng(latitude, longitude);
+            var marker = new kakao.maps.Marker({
+              map: map,
+              position: position,
+            });
+            markers.push(marker); // 마커 배열에 저장
 
+            // 커스텀 오버레이(팝업) 생성
+            var customOverlay = new kakao.maps.CustomOverlay({
+              content: contents,
+              map: map,
+              position: marker.getPosition()
+            });
 
-          // 커스텀 오버레이가 표시될 위치입니다
-          var position = new kakao.maps.LatLng(latitude, longitude);
+            // 마커 클릭 이벤트: 클릭 시 팝업 표시
+            kakao.maps.event.addListener(marker, "click", function () {
+              customOverlay.setMap(map);
+            });
 
-          // 지도에 마커를 표시합니다
-          var marker = new kakao.maps.Marker({
-            map: map,
-            position: position, //new kakao.maps.LatLng(latitude, longitude),
+            // 팝업 닫기 버튼 이벤트 설정
+            AddClickEventListener(i, customOverlay);
+
+            // 기본적으로 팝업은 닫혀있고 마커만 표시
+            customOverlay.setMap(null);
+            
+            i++; // 다음 마커 인덱스
           });
 
-          markers.push(marker);
-
-          // 커스텀 오버레이를 생성합니다
-          var customOverlay = new kakao.maps.CustomOverlay({
-            content: contents,
-            map: map,
-            position: marker.getPosition()
-          });
-
-          // 마커를 클릭했을 때 커스텀 오버레이를 표시합니다
-          kakao.maps.event.addListener(marker, "click", function () {
-            customOverlay.setMap(map);
-          });
-
-          // 닫는 동작 하기 위해서
-          AddClickEventListener(i, customOverlay);
-
-          // 기본적으로 닫아놓고 마커만 표시해놓는다. 
-          customOverlay.setMap(null);
-          i++;
-          });
+          console.log('✓ 지도 표시 완료:', arrFetch.length, '개 마커 생성됨');
         };
 
-        //-------------------------------------------------------------------------------------------------------------------------------------------------------
-
-        // 위에서 작성한 코드를 사용하여 데이터 처리
-        // 클라이언트에 API 키를 두지 않도록 빈 값으로 처리했습니다.
-        // 운영 시에는 서버측 `SCHOOLINFO_API_KEY` 환경변수를 설정하여 사용하세요.
+        //=======================================================================================
+        // 학교 정보 API 설정 및 요청
+        //=======================================================================================
+        
+        // API 키 설정
         var api_key = "";
+        if (typeof window !== 'undefined') {
+          // 브라우저 환경에서만 실행
+          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            // 로컬 개발 환경: 직접 API 키 사용
+            api_key = '78d56edb8f784428854ce15ce720fe86';
+          } else {
+            // Vercel 배포 환경: 서버에서 처리 (API 키 노출 방지)
+            api_key = '';
+          }
+        }
+
         var apiBase = 'https://www.schoolinfo.go.kr/openApi.do';
 
-        // sggCode 설정: 여러 시를 한 번에 가져오려면 쉼표로 구분하세요.
-        // 예: '41370' 또는 '41370,41110'
-        var sggParam = '41370,41110,41591,41593,41595,41597'; // 기본: 오산시
+        // 지역 코드: 오산, 용인, 수원 등 여러 시군구
+        var sggParam = '41370,41110,41591,41593,41595,41597';
 
-        // pbanYr 계산: 현재 월이 6월 이상이면 올해, 아니면 작년
+        // 통계 데이터 연도 계산
+        // 6월 이상이면 올해, 아니면 작년 데이터 사용
         var now = new Date();
         var apiPbanYr = (now.getMonth() + 1 >= 6) ? now.getFullYear() : (now.getFullYear() - 1);
-        // 표시할 '작년' 연도는 apiPbanYr - 1 (요청 연도 기준에서 '작년'을 표시)
         var statsDisplayYear = apiPbanYr - 1;
 
-        // 현재 선택된 학교종류 (기본 고등학교)
+        // 현재 선택된 학교 종류 (기본값: 고등학교)
         var currentSchulKnd = '04';
-        // helper: 단일 sggCode에 대한 대상 URL 생성 (apiType을 지정 가능)
+
+        // 대상 URL 생성 함수
         function buildTargetUrl(sgg, apiType, schulKnd) {
           apiType = typeof apiType !== 'undefined' ? apiType : '0';
           schulKnd = typeof schulKnd !== 'undefined' ? schulKnd : currentSchulKnd;
@@ -390,33 +436,34 @@
           return apiBase + queryParams;
         }
 
-        // Proxy 설정: 로컬 프록시가 있으면 사용하고, 없으면 직접 요청을 시도합니다.
-        // 배포 환경에서는 window.PROXY_BASE에 배포된 프록시 엔드포인트를 설정할 수 있습니다.
-        var proxyBase = (typeof window.PROXY_BASE !== 'undefined') ? window.PROXY_BASE : 'http://localhost:3000/proxy?url=';
+        // 프록시 설정: 로컬 또는 Vercel 환경 자동 판별
+        var proxyBase = (typeof window.PROXY_BASE !== 'undefined') 
+          ? window.PROXY_BASE 
+          : 'http://localhost:3000/proxy?url=';
 
-        // 안전한 fetch 헬퍼: 먼저 프록시를 통해 요청 시도하고 실패하면 직접 대상 URL로 재시도합니다.
+        // 안전한 fetch 헬퍼 함수: 프록시를 통한 요청
         function tryFetchRaw(targetUrl) {
           var attemptedProxy = null;
 
-          // 배포된 serverless가 /api/schoolinfo 라면, 가능하면 서버측에서 API_KEY를 사용하도록
-          // sgg/apiType/schulKndCode/pbanYr 등 파라미터로 변환하여 전송합니다 (클라이언트에 apiKey 노출 안됨).
           try {
+            // Vercel 서버리스 API 사용 시
             if (proxyBase && proxyBase.indexOf('/api/schoolinfo') !== -1) {
               try {
                 var u = new URL(targetUrl);
-                // 학교정보 API인지 확인
+                // 학교정보 API 확인
                 if (u.hostname && u.hostname.indexOf('schoolinfo.go.kr') !== -1) {
                   var srcParams = new URLSearchParams(u.search);
-                  var sgg = srcParams.get('sggCode') || srcParams.get('sgg') || srcParams.get('sggCode');
+                  var sgg = srcParams.get('sggCode');
                   var apiTypeParam = srcParams.get('apiType') || '0';
-                  var schul = srcParams.get('schulKndCode') || srcParams.get('schulKnd') || currentSchulKnd;
-                  var pban = srcParams.get('pbanYr');
-                  // ensure proxyBase ends with ? or & so we can append
+                  var schul = srcParams.get('schulKndCode') || currentSchulKnd;
+                  
+                  // 서버 API 엔드포인트에 파라미터 전달
                   attemptedProxy = proxyBase;
                   if (attemptedProxy.indexOf('?') === -1) attemptedProxy += '?';
                   if (!attemptedProxy.endsWith('?') && !attemptedProxy.endsWith('&')) attemptedProxy += '&';
-                  attemptedProxy += 'sgg=' + encodeURIComponent(sgg || '') + '&apiType=' + encodeURIComponent(apiTypeParam) + '&schulKndCode=' + encodeURIComponent(schul || '');
-                  if (pban) attemptedProxy += '&pbanYr=' + encodeURIComponent(pban);
+                  attemptedProxy += 'sgg=' + encodeURIComponent(sgg || '') 
+                    + '&apiType=' + encodeURIComponent(apiTypeParam) 
+                    + '&schulKndCode=' + encodeURIComponent(schul || '');
                 } else {
                   attemptedProxy = proxyBase + encodeURIComponent(targetUrl);
                 }
@@ -424,97 +471,132 @@
                 attemptedProxy = proxyBase + encodeURIComponent(targetUrl);
               }
             } else {
+              // 로컬 프록시 사용
               attemptedProxy = proxyBase ? (proxyBase + encodeURIComponent(targetUrl)) : targetUrl;
             }
           } catch (e) {
             attemptedProxy = proxyBase ? (proxyBase + encodeURIComponent(targetUrl)) : targetUrl;
           }
 
-            return fetch(attemptedProxy, { credentials: 'omit' }).then(function (res) {
+          // 프록시를 통한 fetch 요청
+          return fetch(attemptedProxy, { credentials: 'omit' })
+            .then(function (res) {
               if (!res.ok && proxyBase) {
-                // 프록시가 설정된 경우에는 브라우저에서 직접 대상 URL로 폴백하지 않습니다.
-                // 대신 호출 실패를 throw 하여 상위에서 처리하도록 합니다.
                 throw new Error('Proxy request failed with status ' + res.status);
               }
               return res;
-            }).catch(function (err) {
+            })
+            .catch(function (err) {
               if (proxyBase) {
-                // 프록시가 설정되어 있고 프록시 호출이 실패하면 직접 폴백하지 않고 에러를 전달합니다.
-                throw err;
+                throw err; // 프록시 실패 시 백업하지 않음
               }
-              // 프록시가 없는 경우에만 직접 대상 URL로 시도합니다.
+              // 프록시 없으면 직접 요청 시도
               return fetch(targetUrl);
             });
         }
 
+        // JSON 응답 반환 함수
         function tryFetchJson(targetUrl) {
-          return tryFetchRaw(targetUrl).then(function (r) { return r.json(); });
+          return tryFetchRaw(targetUrl)
+            .then(function (r) { 
+              return r.json(); 
+            })
+            .catch(err => {
+              console.error('❌ fetch JSON 실패:', err.message);
+              throw err;
+            });
         }
 
-        // apiType=09로 통계(학급/학생/교사) 데이터를 가져와 학교명 기준으로 매핑해서 반환
+        // apiType=09 (통계 데이터) 요청 함수
         function fetchStatsForSggCodes(codes) {
           var statsFetches = codes.map(code => {
             var t = buildTargetUrl(code, '09');
-            // pbanYr 필수 파라미터 추가
             t += '&' + encodeURIComponent('pbanYr') + '=' + encodeURIComponent(apiPbanYr);
-            return tryFetchJson(t).catch(e => { console.warn('stats 요청 실패:', code, e); return null; });
+            return tryFetchJson(t)
+              .catch(e => { 
+                console.warn('통계 요청 실패:', code, e.message); 
+                return null; 
+              });
           });
 
           return Promise.all(statsFetches).then(results => {
             var map = {};
             var totalCount = 0;
+            
+            // 통계 응답 데이터 처리
             results.forEach(d => {
               if (d && d.resultCode === 'success' && Array.isArray(d.list)) {
                 totalCount += d.list.length;
                 d.list.forEach(item => {
-                  // 가능한 키(SCHUL_CODE, SCHUL_NM)를 모두 저장
+                  // 학교 코드나 학교명 기준으로 매핑
                   if (item.SCHUL_CODE) map[item.SCHUL_CODE] = item;
                   if (item.SCHUL_NM && !map[item.SCHUL_NM]) map[item.SCHUL_NM] = item;
                 });
               } else {
-                console.warn('stats 응답 문제:', d && d.resultMsg);
+                console.warn('⚠️ 통계 응답 문제:', d?.resultMsg);
               }
             });
-            console.log('통계 응답 항목 수:', totalCount, '매핑 키 수:', Object.keys(map).length);
+            console.log('📊 통계 데이터 매핑 완료:', totalCount, '개');
             return map;
           });
         }
 
+        // 지역 코드 배열
         var sggCodes = sggParam.split(',').map(s => s.trim()).filter(Boolean);
 
+        // 초기 데이터 로드 (단일 또는 다중 지역)
         if (sggCodes.length === 1) {
+          // 단일 지역: 간단한 요청
           var targetUrl = buildTargetUrl(sggCodes[0]);
           tryFetchJson(targetUrl)
             .then(data => {
-              console.log('📡 초기 로드 API 응답:', data);
+              console.log('📡 초기 로드 API 응답:', {
+                status: data?.resultCode,
+                count: data?.list?.length || 0
+              });
+              
               if (data && data.resultCode === 'success' && Array.isArray(data.list) && data.list.length > 0) {
                 arrAllSchoolData = data.list;
-                console.log('✓ 학교 데이터 로드 성공:', arrAllSchoolData.length, '개');
-                // 통계(apiType=09) 가져와서 병합 후 처리
+                dataLoadStatus.schoolDataLoaded = true;
+                console.log('✓ 학교 데이터 로드 완료:', arrAllSchoolData.length, '개');
+                
+                // ✅ 수정: 통계 데이터 병합
                 fetchStatsForSggCodes(sggCodes).then(statsMap => {
                   arrAllSchoolData.forEach(s => {
-                    // 우선 학교 코드로 매칭, 없으면 이름으로 매칭
-                    if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) s._stats = statsMap[s.SCHUL_CODE];
-                    else if (statsMap[s.SCHUL_NM]) s._stats = statsMap[s.SCHUL_NM];
-                    // 통계 표시 연도 추가
-                    if (s._stats) s._stats._displayYear = statsDisplayYear;
+                    if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) 
+                      s._stats = statsMap[s.SCHUL_CODE];
+                    else if (statsMap[s.SCHUL_NM]) 
+                      s._stats = statsMap[s.SCHUL_NM];
+                    if (s._stats) 
+                      s._stats._displayYear = statsDisplayYear;
                   });
-                  processData();
-                }).catch(e => { console.warn('통계 병합 실패', e); processData(); });
+                  
+                  // ✅ 두 데이터 모두 로드 완료 시 처리
+                  if (dataLoadStatus.ancDataLoaded) {
+                    window.processData();
+                  }
+                }).catch(e => { 
+                  console.warn('통계 병합 실패', e); 
+                  if (dataLoadStatus.ancDataLoaded) window.processData();
+                });
               } else {
-                console.warn('⚠️ 학교 데이터를 찾을 수 없음 또는 API 에러:', data && data.resultMsg);
+                console.warn('⚠️ 학교 데이터 없음:', data?.resultMsg);
                 loadAddrDataDirectly();
               }
             })
             .catch(err => {
-              console.error('❌ 초기 로드 API 요청 실패:', err);
+              console.error('❌ 초기 로드 실패:', err.message);
               loadAddrDataDirectly();
             });
         } else {
-          // 여러 sggCode 병렬 요청 후 결과 합치기
+          // 다중 지역: 병렬 요청
           var fetches = sggCodes.map(code => {
             var t = buildTargetUrl(code);
-            return tryFetchJson(t).catch(e => { console.warn('요청 실패:', code, e); return null; });
+            return tryFetchJson(t)
+              .catch(e => { 
+                console.warn('지역별 요청 실패:', code, e.message); 
+                return null; 
+              });
           });
 
           Promise.all(fetches).then(results => {
@@ -523,38 +605,51 @@
               if (d && d.resultCode === 'success' && Array.isArray(d.list)) {
                 combined = combined.concat(d.list);
               } else {
-                console.warn('⚠️ 일부 요청에서 데이터 누락 또는 에러:', d && d.resultMsg);
+                console.warn('⚠️ 일부 요청 실패:', d?.resultMsg);
               }
             });
 
             if (combined.length > 0) {
               arrAllSchoolData = combined;
-              console.log('✓ 병합된 학교 데이터 개수:', arrAllSchoolData.length);
-              // 통계(apiType=09) 가져와서 병합 후 처리
+              dataLoadStatus.schoolDataLoaded = true;
+              console.log('✓ 병합된 학교 데이터:', arrAllSchoolData.length, '개');
+              
+              // ✅ 통계 데이터 병합
               fetchStatsForSggCodes(sggCodes).then(statsMap => {
                 arrAllSchoolData.forEach(s => {
-                  // 우선 학교 코드로 매칭, 없으면 이름으로 매칭
-                  if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) s._stats = statsMap[s.SCHUL_CODE];
-                  else if (statsMap[s.SCHUL_NM]) s._stats = statsMap[s.SCHUL_NM];
-                  if (s._stats) s._stats._displayYear = statsDisplayYear;
+                  if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) 
+                    s._stats = statsMap[s.SCHUL_CODE];
+                  else if (statsMap[s.SCHUL_NM]) 
+                    s._stats = statsMap[s.SCHUL_NM];
+                  if (s._stats) 
+                    s._stats._displayYear = statsDisplayYear;
                 });
-                processData();
-              }).catch(e => { console.warn('통계 병합 실패', e); processData(); });
+                
+                // ✅ 두 데이터 모두 로드 완료 시 처리
+                if (dataLoadStatus.ancDataLoaded) {
+                  window.processData();
+                }
+              }).catch(e => { 
+                console.warn('통계 병합 실패', e); 
+                if (dataLoadStatus.ancDataLoaded) window.processData();
+              });
             } else {
-              console.warn('⚠️ 모든 요청에서 데이터가 없습니다. 학생 데이터 사용');
+              console.warn('⚠️ 모든 요청에서 데이터 없음');
               loadAddrDataDirectly();
             }
           }).catch(err => {
-            console.error('❌ 병렬 요청 처리 실패:', err);
+            console.error('❌ 병렬 요청 처리 실패:', err.message);
             loadAddrDataDirectly();
           });
         }
 
-        // Overrideable setSchoolInfo: 학교 종류(초/중/고)를 선택하면 학교 목록과 통계를 다시 불러와 병합합니다.
+        // ✅ 학교 종류 선택 함수 (초등/중등/고등)
         window.setSchoolInfo = function(schooltype) {
           var elementarySchoolControl = document.getElementById("btnElemtarySchool");
           var middleSchoolControl = document.getElementById("btnMiddleSchool");
           var highSchoolControl = document.getElementById("btnHighSchool");
+          
+          // UI 버튼 상태 업데이트
           if (schooltype === "Elementary") {
             elementarySchoolControl.className = "selected_btn";
             middleSchoolControl.className = "btn";
@@ -572,10 +667,14 @@
             currentSchulKnd = '04';
           }
 
-          // 학교 목록 불러오기 (다중 sgg 지원)
+          // 선택된 학교 종류로 새 데이터 로드
           var fetches = sggCodes.map(code => {
             var t = buildTargetUrl(code, '0', currentSchulKnd);
-            return tryFetchJson(t).catch(e => { console.warn('요청 실패:', code, e); return null; });
+            return tryFetchJson(t)
+              .catch(e => { 
+                console.warn('요청 실패:', code, e.message); 
+                return null; 
+              });
           });
 
           Promise.all(fetches).then(results => {
@@ -583,46 +682,65 @@
             results.forEach(d => {
               if (d && d.resultCode === 'success' && Array.isArray(d.list)) {
                 combined = combined.concat(d.list);
-              } else {
-                console.warn('⚠️ 일부 요청에서 데이터 누락 또는 에러:', d && d.resultMsg);
               }
             });
 
             if (combined.length > 0) {
               arrAllSchoolData = combined;
-              console.log('✓ 학교 데이터 로드(선택):', arrAllSchoolData.length);
-              // 통계(apiType=09) 가져와서 병합 후 처리
+              console.log('✓ 선택된 학교 데이터 로드:', arrAllSchoolData.length, '개');
+              
+              // 통계 데이터 병합
               fetchStatsForSggCodes(sggCodes).then(statsMap => {
                 arrAllSchoolData.forEach(s => {
                   if (s.SCHUL_CODE && statsMap[s.SCHUL_CODE]) s._stats = statsMap[s.SCHUL_CODE];
                   else if (statsMap[s.SCHUL_NM]) s._stats = statsMap[s.SCHUL_NM];
                   if (s._stats) s._stats._displayYear = statsDisplayYear;
                 });
-                processData();
-              }).catch(e => { console.warn('통계 병합 실패', e); processData(); });
+                window.processData();
+              }).catch(e => { 
+                console.warn('통계 병합 실패', e); 
+                window.processData();
+              });
             } else {
-              console.warn('⚠️ 선택한 조건으로 학교 데이터가 없음');
-              processData();
+              console.warn('⚠️ 선택한 조건에 데이터 없음');
+              window.processData();
             }
-          }).catch(err => { console.error('❌ 학교 목록 요청 실패:', err); processData(); });
-        }
+          }).catch(err => { 
+            console.error('❌ 학교 목록 요청 실패:', err.message); 
+            window.processData();
+          });
+        };
 
-        // XMLHttpRequest로 addr.json 파일 읽기
+        // ✅ addr.json 파일 로드 (XHR 사용)
         var xhr = new XMLHttpRequest();
         xhr.open('GET', './addr.json', true);
         
         xhr.onload = function() {
-          // file:// 프로토콜에서는 상태가 0으로 올 수 있음
+          // 파일:// 프로토콜에서는 상태가 0으로 올 수 있습니다.
           if (xhr.status === 200 || xhr.status === 0) {
             try {
-              console.log('📝 addr.json 텍스트 받음, 길이:', xhr.responseText.length);
+              console.log('📝 addr.json 받음, 길이:', xhr.responseText.length, '자');
               const data = JSON.parse(xhr.responseText);
+              
+              // ✅ 데이터 유효성 검사
+              if (!Array.isArray(data)) {
+                throw new Error('addr.json이 배열 형식이 아닙니다');
+              }
+              if (data.length === 0) {
+                throw new Error('addr.json이 비어있습니다');
+              }
+              
               arrANC_Data = data;
-              console.log('✓ 주소 데이터 로드 성공 (파일):', arrANC_Data.length, '개');
-              processData();
+              dataLoadStatus.ancDataLoaded = true;
+              console.log('✓ 주소 데이터 로드 완료 (파일):', arrANC_Data.length, '명');
+              
+              // ✅ 두 데이터 모두 로드되었으면 processData() 호출
+              if (dataLoadStatus.schoolDataLoaded) {
+                window.processData();
+              }
             } catch (parseErr) {
               console.warn('⚠️ JSON 파싱 오류:', parseErr.message);
-              console.log('파일 내용 처음 200자:', xhr.responseText.substring(0, 200));
+              console.log('파일 처음 200자:', xhr.responseText.substring(0, 200));
               loadAddrDataDirectly();
             }
           } else {
@@ -632,30 +750,30 @@
         };
         
         xhr.onerror = function() {
-          console.warn('⚠️ 주소 데이터 로드 실패 (네트워크 에러)');
-          console.log('직접 데이터로 대체합니다.');
+          console.warn('⚠️ 주소 데이터 네트워크 에러');
           loadAddrDataDirectly();
         };
         
         xhr.send();
 
-        console.log(arrFetch);
+        console.log('초기화 완료: 데이터 로드 대기 중...');
       }
 
-      // Kakao SDK가 로드될 때까지 기다렸다가 맵 초기화
+      // Kakao SDK 로드 완료 확인 함수
       function waitForKakao() {
-        // kakao.maps.LatLng 생성자가 존재하는지 확인 (SDK 완전 로드 확인)
+        // kakao.maps.LatLng 생성자 존재 여부로 SDK 로드 확인
         if (typeof kakao !== 'undefined' && 
             typeof kakao.maps !== 'undefined' && 
             typeof kakao.maps.LatLng === 'function') {
+          console.log('✓ Kakao SDK 로드 완료');
           initializeMap();
         } else {
-          // Kakao SDK가 아직 로드되지 않았으면 100ms 후 다시 확인
+          // 아직 로드되지 않았으면 100ms 후 재시도
           setTimeout(waitForKakao, 100);
         }
       }
 
-      // DOM이 준비되고 Kakao SDK 로드 대기
+      // DOM 준비 또는 페이지 로드 후 실행
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', waitForKakao);
       } else {
