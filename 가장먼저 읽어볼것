@@ -21,7 +21,7 @@
 //    - sggCode : sido_sggCode.xlsx   * Excel Viewer 확장 설치 필요 	
 //    - schulKndCode : 학교 급 구분(02:초등 03:중등 04:고등 05:특수 06:그외 07:각종)
 
-
+// 이거는 LG 노트북에서 진행중이었음! - proxy를 실행해야 하는 거임!
 
 git init
 git add .
