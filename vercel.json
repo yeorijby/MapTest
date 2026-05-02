@@ -23,8 +23,5 @@
       "src": "/(.*)",
       "dest": "/$1"
     }
-  ],
-  "env": {
-    "SCHOOLINFO_API_KEY": "@schoolinfo_api_key"
-  }
+  ]
 }
