@@ -149,37 +149,76 @@
         // ✅ Vercel API 프록시 호출
         var currentSchulKnd = '04';
         var sggCodes = ['41370', '41110', '41591', '41593', '41595', '41597'];
+        var statsYear = String(new Date().getFullYear() - 1); // 전년도 통계
 
         console.log('📍 학교 데이터 로드 시작...');
 
         function fetchSchoolData(sgg, schulKnd) {
-          var url = '/api/schoolinfo?sgg=' + sgg + '&apiType=0&schulKndCode=' + schulKnd;
-
-          return fetch(url)
+          return fetch('/api/schoolinfo?sgg=' + sgg + '&apiType=0&schulKndCode=' + schulKnd)
             .then(r => r.json())
-            .catch(err => {
-              console.warn('⚠️ ' + sgg + ' 요청 실패:', err.message);
-              return null;
-            });
+            .catch(err => { console.warn('⚠️ 목록 ' + sgg + ' 실패:', err.message); return null; });
         }
 
-        Promise.all(sggCodes.map(sgg => fetchSchoolData(sgg, currentSchulKnd)))
-          .then(results => {
+        function fetchSchoolStats(sgg, schulKnd) {
+          return fetch('/api/schoolinfo?sgg=' + sgg + '&apiType=09&schulKndCode=' + schulKnd + '&pbanYr=' + statsYear)
+            .then(r => r.json())
+            .catch(err => { console.warn('⚠️ 통계 ' + sgg + ' 실패:', err.message); return null; });
+        }
+
+        function buildStatsMap(statsResults) {
+          var map = {};
+          statsResults.forEach(data => {
+            if (data && data.resultCode === 'success' && data.list) {
+              data.list.forEach(stat => {
+                // 학교 코드 또는 학교명으로 키 생성
+                var key = stat.SCHUL_CODE || stat.SD_SCHUL_CODE || stat.SCHUL_NM;
+                if (key) map[key] = stat;
+              });
+            }
+          });
+          return map;
+        }
+
+        function attachStats(schools, statsMap) {
+          schools.forEach(school => {
+            var key = school.SCHUL_CODE || school.SD_SCHUL_CODE || school.SCHUL_NM;
+            if (key && statsMap[key]) {
+              school._stats = statsMap[key];
+              school._stats._displayYear = statsYear;
+            }
+          });
+        }
+
+        function loadSchoolAndStats(schulKnd) {
+          return Promise.all([
+            Promise.all(sggCodes.map(sgg => fetchSchoolData(sgg, schulKnd))),
+            Promise.all(sggCodes.map(sgg => fetchSchoolStats(sgg, schulKnd)))
+          ]).then(function(results) {
+            var listResults = results[0];
+            var statsResults = results[1];
+
             let combined = [];
-            results.forEach(data => {
+            listResults.forEach(data => {
               if (data && data.resultCode === 'success' && data.list && data.list.length > 0) {
                 combined = combined.concat(data.list);
               }
             });
 
             if (combined.length > 0) {
+              var statsMap = buildStatsMap(statsResults);
+              attachStats(combined, statsMap);
+              console.log('✓ 학교 데이터 로드:', combined.length + '개, 통계 매핑:', Object.keys(statsMap).length + '개');
+            }
+            return combined;
+          });
+        }
+
+        loadSchoolAndStats(currentSchulKnd)
+          .then(combined => {
+            if (combined.length > 0) {
               arrAllSchoolData = combined;
               dataLoadStatus.schoolDataLoaded = true;
-              console.log('✓ 학교 데이터 로드:', combined.length + '개');
-
-              if (dataLoadStatus.ancDataLoaded) {
-                window.processData();
-              }
+              if (dataLoadStatus.ancDataLoaded) window.processData();
             } else {
               console.warn('⚠️ API 요청 실패, 백업 데이터 사용');
               loadAddrDataDirectly();
@@ -207,15 +246,8 @@
             currentSchulKnd = '04';
           }
 
-          Promise.all(sggCodes.map(sgg => fetchSchoolData(sgg, currentSchulKnd)))
-            .then(results => {
-              let combined = [];
-              results.forEach(data => {
-                if (data && data.resultCode === 'success' && data.list) {
-                  combined = combined.concat(data.list);
-                }
-              });
-
+          loadSchoolAndStats(currentSchulKnd)
+            .then(combined => {
               if (combined.length > 0) {
                 arrAllSchoolData = combined;
                 window.processData();
