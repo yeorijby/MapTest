@@ -35,18 +35,19 @@
         >
       </div>
       <!-- 지도 확대, 축소 컨트롤 div 입니다 -->
-      <div class="custom_zoomcontrol radius_border">
-        <span onclick="zoomIn()"
-          ><img
+      <div class="custom_zoomcontrol radius_border" aria-label="지도 확대 축소">
+        <span class="zoom-btn" onclick="zoomIn()">
+          <img
             src="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/ico_plus.png"
             alt="확대"
-            let arrFetch = [];
-        <span onclick="zoomOut()"
-          ><img
+          />
+        </span>
+        <span class="zoom-btn" onclick="zoomOut()">
+          <img
             src="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/ico_minus.png"
             alt="축소"
-              var matched = false;
-        /></span>
+          />
+        </span>
       </div>
     </div>
     <!-- 전역 변수 선언 -->
