@@ -146,19 +146,15 @@
           console.log('✓ 지도 표시 완료:', markers.length + '개 마커');
         };
 
-        // ✅ API 직접 호출 (Vercel API 우회)
+        // ✅ Vercel API 프록시 호출
         var currentSchulKnd = '04';
         var sggCodes = ['41370', '41110', '41591', '41593', '41595', '41597'];
-        var apiBase = 'https://www.schoolinfo.go.kr/openApi.do';
-        var apiKey = '78d56edb8f784428854ce15ce720fe86';
-        
+
         console.log('📍 학교 데이터 로드 시작...');
 
         function fetchSchoolData(sgg, schulKnd) {
-          var url = apiBase + '?apiKey=' + apiKey + 
-            '&apiType=0&sidoCode=41&sggCode=' + sgg + 
-            '&schulKndCode=' + schulKnd;
-          
+          var url = '/api/schoolinfo?sgg=' + sgg + '&apiType=0&schulKndCode=' + schulKnd;
+
           return fetch(url)
             .then(r => r.json())
             .catch(err => {
@@ -169,8 +165,8 @@
 
         Promise.all(sggCodes.map(sgg => fetchSchoolData(sgg, currentSchulKnd)))
           .then(results => {
-            const combined = [];
-            results.forEach((data, idx) => {
+            let combined = [];
+            results.forEach(data => {
               if (data && data.resultCode === 'success' && data.list && data.list.length > 0) {
                 combined = combined.concat(data.list);
               }
@@ -180,7 +176,7 @@
               arrAllSchoolData = combined;
               dataLoadStatus.schoolDataLoaded = true;
               console.log('✓ 학교 데이터 로드:', combined.length + '개');
-              
+
               if (dataLoadStatus.ancDataLoaded) {
                 window.processData();
               }
@@ -188,6 +184,10 @@
               console.warn('⚠️ API 요청 실패, 백업 데이터 사용');
               loadAddrDataDirectly();
             }
+          })
+          .catch(err => {
+            console.warn('⚠️ 학교 데이터 로드 실패:', err.message);
+            loadAddrDataDirectly();
           });
 
         // ✅ 학교 종류 선택
@@ -195,7 +195,7 @@
           const elem = document.getElementById("btnElemtarySchool");
           const mid = document.getElementById("btnMiddleSchool");
           const high = document.getElementById("btnHighSchool");
-          
+
           if (type === "Elementary") {
             elem.className = "selected_btn"; mid.className = "btn"; high.className = "btn";
             currentSchulKnd = '02';
@@ -209,13 +209,13 @@
 
           Promise.all(sggCodes.map(sgg => fetchSchoolData(sgg, currentSchulKnd)))
             .then(results => {
-              const combined = [];
+              let combined = [];
               results.forEach(data => {
                 if (data && data.resultCode === 'success' && data.list) {
                   combined = combined.concat(data.list);
                 }
               });
-              
+
               if (combined.length > 0) {
                 arrAllSchoolData = combined;
                 window.processData();
@@ -246,8 +246,11 @@
           });
       }
 
+      var mapInitialized = false;
       function waitForKakao() {
+        if (mapInitialized) return;
         if (typeof kakao !== 'undefined' && kakao.maps && kakao.maps.LatLng) {
+          mapInitialized = true;
           console.log('✓ Kakao SDK 준비 완료');
           initializeMap();
         } else {
@@ -260,7 +263,7 @@
       } else {
         waitForKakao();
       }
-      
+
       window.addEventListener('load', waitForKakao);
     </script>
   </body>
