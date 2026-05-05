@@ -213,6 +213,31 @@
           });
         }
 
+        function loadSchoolsFallback(schulKnd) {
+          console.log('📦 정적 폴백 데이터(schools_fallback.json) 로드 시도...');
+          fetch('/schools_fallback.json')
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(data => {
+              const list = data && data[schulKnd];
+              if (Array.isArray(list) && list.length > 0) {
+                arrAllSchoolData = list;
+                dataLoadStatus.schoolDataLoaded = true;
+                console.log('✓ 폴백 데이터 로드:', list.length + '개 학교');
+                if (dataLoadStatus.ancDataLoaded) window.processData();
+              } else {
+                console.warn('⚠️ 폴백 데이터에 해당 학교 종류 없음:', schulKnd);
+                dataLoadStatus.schoolDataLoaded = true;
+                if (dataLoadStatus.ancDataLoaded) window.processData();
+              }
+            })
+            .catch(err => {
+              console.warn('⚠️ 폴백 파일도 없음:', err.message);
+              console.warn('   → node generate_fallback.js 를 로컬에서 실행 후 배포하세요.');
+              dataLoadStatus.schoolDataLoaded = true;
+              if (dataLoadStatus.ancDataLoaded) window.processData();
+            });
+        }
+
         loadSchoolAndStats(currentSchulKnd)
           .then(combined => {
             if (combined.length > 0) {
@@ -220,14 +245,16 @@
               dataLoadStatus.schoolDataLoaded = true;
               if (dataLoadStatus.ancDataLoaded) window.processData();
             } else {
-              console.warn('⚠️ API 요청 실패, 백업 데이터 사용');
-              loadAddrDataDirectly();
+              console.warn('⚠️ API 응답 없음 (해외 IP 차단 가능성), 정적 폴백 시도...');
+              loadSchoolsFallback(currentSchulKnd);
             }
           })
           .catch(err => {
             console.warn('⚠️ 학교 데이터 로드 실패:', err.message);
-            loadAddrDataDirectly();
+            loadSchoolsFallback(currentSchulKnd);
           });
+
+        window.loadSchoolsFallback = loadSchoolsFallback;
 
         // ✅ 학교 종류 선택
         window.setSchoolInfo = function(type) {
@@ -251,8 +278,11 @@
               if (combined.length > 0) {
                 arrAllSchoolData = combined;
                 window.processData();
+              } else {
+                window.loadSchoolsFallback(currentSchulKnd);
               }
-            });
+            })
+            .catch(() => window.loadSchoolsFallback(currentSchulKnd));
         };
 
         // ✅ addr.json 로드
